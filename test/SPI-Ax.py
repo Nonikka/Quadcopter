@@ -1,8 +1,8 @@
 #-*- coding:utf8 -*-
-#MPU6050接法:GND → 6
-#            VCC → 1
-#            RX → 8
-#            TX → 10
+#GND → 6
+#VCC → 1
+#RX → 8
+#TX → 10
 import serial,time,sys #http://pythonhosted.org/pyserial/pyserial_api.html
 from trans import *
 ser = serial.Serial('/dev/ttyAMA0', 115200, timeout=1)
@@ -32,22 +32,22 @@ def main():
             print str_hex
             while(1):
                 if str_hex[COUNTER] == '5':
-                    if str_hex[COUNTER + 3 : COUNTER + 5] == '53':
+                    if str_hex[COUNTER + 3 : COUNTER + 5] == '51':
                         os.system('clear')
                         print ' yes'
-                        RollL = int(str_hex[COUNTER + 6 :COUNTER + 8],16)
-                        RollH = int(str_hex[COUNTER + 9 :COUNTER + 11],16)
-                        Roll = ((RollH*(2**8))+RollL)/32768.0*180   #C中原算法(ucStrAngle[1]<<8| ucStrAngle[0])/32768.0*180
-                        print 'RollL ',str_hex[COUNTER + 6 :COUNTER + 8],RollL#在python中这样算方便一点
-                        print 'RollH ',str_hex[COUNTER + 9 :COUNTER + 11],RollH,RollH*(2**8)
-                        print 'Roll = ',Roll,'(RollH*(2**8))+RollL=',(RollH*(2**8))+RollL
+                        AxL = int(str_hex[COUNTER + 6 :COUNTER + 8])
+                        AxH = int(str_hex[COUNTER + 9 :COUNTER + 11])
+                        Ax = (AxH*(2**8)+AxL)/32768*16
+                        print 'AxL ',str_hex[COUNTER + 6 :COUNTER + 8],AxL
+                        print 'AxH ',str_hex[COUNTER + 9 :COUNTER + 11],AxH,AxH*(2**8)
+                        print 'Ax = ',Ax,'(AxH*(2**8)+AxL)=',(AxH*(2**8)+AxL)
                         COUNTER = 0
                         break
                     else:
                         COUNTER = COUNTER + 1
                 else:
                     COUNTER = COUNTER + 1
-                if COUNTER > 100:
+                if COUNTER > 50:
                     print 'May not get the data,break...'
                     break
             raw_input("输入继续")

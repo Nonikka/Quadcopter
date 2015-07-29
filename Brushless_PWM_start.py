@@ -18,12 +18,12 @@ import RPi.GPIO as GPIO
 def main():
     try:
         GPIO.setmode(GPIO.BOARD)
-        GPIO.setup(12, GPIO.OUT)
-        p = GPIO.PWM(12, 500)
+        GPIO.setup(18, GPIO.OUT)
+        p = GPIO.PWM(18, 490)
         p.start(95)
         #press_any_key_exit('按任意键设置最低行程50：')
-        raw_input("按任意键设置最低行程50：")
-        p.ChangeDutyCycle(50)
+        raw_input("按任意键设置最低行程54：")
+        p.ChangeDutyCycle(54)
         _Accelerator = 0
         time.sleep(1)
         print  "Start!"
