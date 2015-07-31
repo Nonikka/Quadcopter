@@ -43,3 +43,60 @@ T0:23:respawn:/sbin/getty -L ttyAMA0 115200 vt100
 复制代码
 ctrl+x 按Y保存退出
 然后重启树莓派,之后树莓派的pin8(GPIO14) pin10(GPIO15)这两个口就可以当成普通的串口来用了 现在你可以像使用一个普通串口那样使用/dev/ttyMA0了
+
+③GPIO:
+git clone git://git.drogon.net/wiringPi
+cd wiringPi
+git pull origin
+./build
+
+关于PWM的计算：
+http://raspberrypi.stackexchange.com/questions/23361/wiringpi-softpwm-calculation-to-determine-duty-cycle
+The basic pulse unit is 100 micros long.
+
+The final paramater in softPwmCreate says how long each cycle is in basic pulse units.
+
+softPwmCreate(1,0,200) says create a cycle 20 ms long made up of 200 steps (20 ms as 200 * 100 = 20000 microseconds).
+
+softPwmWrite(1,185) says keep the pulse high for 18.5 ms in every 20 ms cycle (18.5 ms as 185 * 100 = 18500 microseconds). That is way too long. Servos nominally respond to 1 ms - 2 ms pulses. So you should choose values 10 - 20.
+
+softPwmCreate(1,0,500) says create a cycle 50 ms long made up of 500 steps.
+
+softPwmWrite(1,14) says keep the pulse high for 1.4 ms in every 50 ms cycle. This will be close to the central position. A correct value would be 15 (again nominally values 10-20 should be used).
+
+The 20 ms cycle is more correct for servos as it will give a nominal update of 50 Hz. A 50 ms cycle will only update at 20 Hz.
+
+In my opinion pwmSetClock(500) has nothing to do with what you are doing and can be ignored. If it changes anything it'll be the frequency output on gpio18 (Broadcom numbering).
+
+Why not teach your teacher something and use a library which controls servos properly?
+
+My own pigpio or servoblaster or RPIO.GPIO (note, NOT RPi.GPIO), etc.
+
+edited to add:
+
+I just confirmed my understanding by running the following program and viewing the output with piscope.
+
+gcc -o wpi wpi-servos.c -lwiringPi
+
+#include <wiringPi.h>
+#include <softPwm.h>
+
+#define GPIO1 4
+#define GPIO2 7
+
+int main(int argc, char *argv[])
+{
+   if (wiringPiSetupGpio() < 0) return 1;
+
+   pinMode(GPIO1, OUTPUT);
+   digitalWrite(GPIO1, LOW);
+   softPwmCreate(GPIO1, 0, 200);
+   softPwmWrite(GPIO1, 15);
+
+   pinMode(GPIO2, OUTPUT);
+   digitalWrite(GPIO2, LOW);
+   softPwmCreate(GPIO2, 0, 500);
+   softPwmWrite(GPIO2, 15);
+
+   sleep(30);
+}
