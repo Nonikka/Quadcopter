@@ -7,6 +7,7 @@
 
 int main (){
     int fd,i;
+    int Num_Avail;
     unsigned int TimeNow,TimeStart;
     unsigned char Re_buf[11],counter;
     int all_count;
@@ -17,12 +18,14 @@ int main (){
         fprintf (stderr, "Unable to open serial device: %s\n", strerror (errno)) ;
     return 1 ;
     }
-    
+    softPwmCreate(7,0,20);
     for(;;)
     {
+        
         TimeStart = millis();
         while(1)
         {
+            
             Re_buf[counter]=serialGetchar(fd);
             //printf("%x\t",Re_buf[counter]&0xff);
             //printf("%x\t",Re_buf[counter]);
@@ -61,21 +64,20 @@ int main (){
                 Value[1] = ((short)(ucStra[3]<<8| ucStra[2]))/32768.0*16;
                 Value[2] = ((short)(ucStra[5]<<8| ucStra[4]))/32768.0*16;
                 system("clear");
+                printf("Num_Avail; %d",Num_Avail);
                 printf("a:%.3f %.3f %.3f  ",Value[0],Value[1],Value[2]); 
                 
                 Value[0] = ((short)(ucStrw[1]<<8| ucStrw[0]))/32768.0*2000;
                 Value[1] = ((short)(ucStrw[3]<<8| ucStrw[2]))/32768.0*2000;
                 Value[2] = ((short)(ucStrw[5]<<8| ucStrw[4]))/32768.0*2000;
-                printf("w:%.3f %.3f %.3f  ",Value[0],Value[1],Value[2]); 
+                printf("w:%.3f %.3f %.3f  \n",Value[0],Value[1],Value[2]); 
 
                 Value[0] = ((short)(ucStrAngle[1]<<8| ucStrAngle[0]))/32768.0*180;
                 Value[1] = ((short)(ucStrAngle[3]<<8| ucStrAngle[2]))/32768.0*180;
                 Value[2] = ((short)(ucStrAngle[5]<<8| ucStrAngle[4]))/32768.0*180;
                 printf("A:%.2f %.2f %.2f\r\n",Value[0],Value[1],Value[2]); 
                 all_count++;
-                printf("count: %d time: %d",all_count,TimeNow - TimeStart);
-                
-                
+                printf("count: %d time: %d\n",all_count,TimeNow - TimeStart);
                 break;
                 }
             

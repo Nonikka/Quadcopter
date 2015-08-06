@@ -8,30 +8,52 @@
 #include <wiringPi.h>
 #include <wiringSerial.h>
 #include <softPwm.h>
-
-/*int getitimer(int which, struct itimerval *value);
-int setitimer(int which, struct itimerval*newvalue, struct itimerval* oldvalue);
-struct timeval
-{
-long tv_sec; //秒
-long tv_usec; //微秒
-};
-struct itimerval
-{
-struct timeval it_interval; //时间间隔
-struct timeval it_value;   //当前时间计数
-};*/
+#include <math.h>
 
 static char msg[] = "time is running out";
 static int len;
-// 向标准错误输出信息，时间到了
 int DutyCycle[3],fd;
+unsigned int TimeStart;
 float Acceleration[3],AngleSpeed[3],Angle[3],Roll,Pitch,Yaw;
 
-void prompt_info(int signo)
+int set_ticker(int n_msecs)  
+{  
+    struct itimerval new_timeset;  
+    long n_sec, n_usecs;  
+  
+    n_sec = n_msecs / 1000;  
+  
+    n_usecs = (n_msecs % 1000) * 1000L;  
+  
+    new_timeset.it_interval.tv_sec = n_sec;  // set reload   设置初始间隔  
+    new_timeset.it_interval.tv_usec = n_usecs; //new ticker value  
+  
+    new_timeset.it_value.tv_sec = n_sec;   //store this   设置重复间隔  
+    new_timeset.it_value.tv_usec = n_usecs; //and this  
+  
+    return setitimer(ITIMER_REAL, &new_timeset, NULL);   
+      //#include<sys/time.h>  getitimer(int which, struct itimerval *val)  
+      //setitimer(int which, const struct itimerval* newval, struct itimerval *oldval);  
+      //which 指定哪种计时器  ITMER_REAL, ITIMER_VIRTUAL, ITIMER_PROF.   
+}  
+
+void Calc_Dutycycle()
 {
+    if (Angle[0] <= 180&& Angle[0]>0)
+    {
+        Roll = Angle[0];
+    }
+    else 
+    {
+        Roll = abs(Angle[0]);
+    }
+    DutyCycle[0] = (Roll/180)*8 + 11;
+}
+
+void countdown(int signum)  
+{  
     int Num_Avail,i,all_count;
-    unsigned int TimeNow,TimeStart;
+    unsigned int TimeNow;
     unsigned char Re_buf[11],counter;
     unsigned char ucStra[6],ucStrw[6],ucStrAngle[6];
     if ((Num_Avail = serialDataAvail (fd)) < 0)
@@ -39,13 +61,14 @@ void prompt_info(int signo)
         fprintf (stderr, "Unable to open serial device: %s\n", strerror (errno)) ;
         return  ;
     }
-    for(i = 0;i < Num_Avail;i++)
+    //for(i = 0;i < 10;i++)
+    for(;;)
     {
         Re_buf[counter]=serialGetchar(fd);
         //printf("%x\t",Re_buf[counter]&0xff);
         //printf("%x\t",Re_buf[counter]);
         counter++; 
-        if(counter==0&&Re_buf[0]!=0x55) {return;}//第0号数据不是帧头
+        if(counter==0&&Re_buf[0]!=0x55) {counter--;}//第0号数据不是帧头
         if(counter==11)             //接收到11个数据
         {    
             counter=0;               //重新赋值，准备下一帧数据的接收        
@@ -92,57 +115,19 @@ void prompt_info(int signo)
                 Angle[2] = ((short)(ucStrAngle[5]<<8| ucStrAngle[4]))/32768.0*180;//Yaw
                 printf("A:%.2f %.2f %.2f\r\n",Angle[0],Angle[1],Angle[2]); 
                 all_count++;
-                printf("count: %d time: %d",all_count,TimeNow - TimeStart);
+                printf("count: %d time: %d\n",all_count,TimeNow - TimeStart);
                 break;
             }
         //write(STDERR_FILENO, msg, len);
         }
     }
-}
-// 建立信号处理机制
-void init_sigaction(void)
-{
-struct sigaction tact;
-/*信号到了要执行的任务处理函数为prompt_info*/
-tact.sa_handler = prompt_info;
-tact.sa_flags = 0;
-/*初始化信号集*/
-sigemptyset(&tact.sa_mask);
-/*建立信号处理机制*/
-sigaction(SIGALRM, &tact, NULL);
-}
+} 
 
-void init_time()
-{
-struct itimerval value;
-/*设定执行任务的时间间隔为0秒10000微秒 = 10毫秒*/
-value.it_value.tv_sec = 0;
-value.it_value.tv_usec = 10000;
-/*设定初始时间计数也为0秒10000微秒 = 10毫秒*/
-value.it_interval = value.it_value;
-/*设置计时器ITIMER_REAL*/
-setitimer(ITIMER_REAL, &value, NULL);
-}
-
-void Calc_Dutycycle()
-{
-    if (Angle[0] >= 160)
-    {
-        Roll = 360 - Angle[0];
-    }
-    else 
-    {
-        Roll = Angle[0];
-    }
-    DutyCycle[0] = Roll/160*8 + 11;
-}
-
-int main()
-{
+int main()  
+{    
     len = strlen(msg);
-    init_sigaction();
-    init_time();
     int PinNumber = 7;
+    TimeStart = millis();
     if ((fd = serialOpen ("/dev/ttyAMA0", 115200)) < 0)
     {
         fprintf (stderr, "Unable to open serial device: %s\n", strerror (errno)) ;
@@ -159,15 +144,23 @@ int main()
     getchar();
     softPwmWrite(PinNumber,11);
     printf("54now\n");
-    delay(1000);
+    delay(800);
     softPwmWrite(PinNumber,12.6);
     printf("start!");
-    while(1)
-        {
-        delay(100);
-        Calc_Dutycycle();
-        softPwmWrite(PinNumber,DutyCycle[0]);
-        printf("DutyCycle[0]: %d",DutyCycle[0]);
-        }
-    exit(0);
-}
+    fflush(stdout);
+    delay(100);
+    signal(SIGALRM, countdown);  
+    //set_ticker(1000);
+    if(set_ticker(10) == -1)  
+        perror("set_ticker");  
+    else  
+        while(1)  
+        {  
+            //delay(10);
+            Calc_Dutycycle();
+            softPwmWrite(PinNumber,DutyCycle[0]);
+            printf("DutyCycle[0]: %d\n",DutyCycle[0]);
+            fflush(stdout);
+        }  
+    return 0;  
+} 
