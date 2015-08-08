@@ -12,7 +12,7 @@
 
 static char msg[] = "time is running out";
 static int len;
-int fd;
+int fd,Flag;
 unsigned int TimeStart;
 float Acceleration[3],AngleSpeed[3],Angle[3],Roll,Pitch,Yaw,DutyCycle[3];
 
@@ -52,9 +52,9 @@ void Calc_Dutycycle()
 
 void countdown(int signum)  
 {  
-    int Num_Avail,i,all_count;
+    int Num_Avail,i,all_count,t;
     unsigned int TimeNow;
-    unsigned char Re_buf[11],counter;
+    unsigned char Re_buf[11],counter,FirstBuf;
     unsigned char ucStra[6],ucStrw[6],ucStrAngle[6];
     char buffer[80];
     if ((Num_Avail = serialDataAvail (fd)) < 0)
@@ -62,14 +62,28 @@ void countdown(int signum)
         fprintf (stderr, "Unable to open serial device: %s\n", strerror (errno)) ;
         return  ;
     }
-    for(i = 0;i < 30;i++)
+    if (Flag == 0)
+    {
+        Flag = 1;
+        while(1)
+        {
+            FirstBuf = serialGetchar(fd);
+            if(FirstBuf == 0x55)
+            {
+                for(t = 0;t < 10;t++)
+                {
+                    FirstBuf = serialGetchar(fd);
+                }
+                break;
+            }
+        }
+    }
+    for(i = 0;i < Num_Avail;i++)
     //for(;;)
     {
         Re_buf[counter]=serialGetchar(fd);
-        //printf("%x\t",Re_buf[counter]&0xff);
-        //printf("%x\t",Re_buf[counter]);
-        counter++; 
-        if(counter==0&&Re_buf[0]!=0x55) {counter--;}//第0号数据不是帧头
+        if(counter==0&&Re_buf[0]!=0x55) {return;}//第0号数据不是帧头
+        counter++;
         if(counter==11)             //接收到11个数据
         {    
             counter=0;               //重新赋值，准备下一帧数据的接收        
@@ -103,7 +117,8 @@ void countdown(int signum)
                 Acceleration[1] = ((short)(ucStra[3]<<8| ucStra[2]))/32768.0*16;
                 Acceleration[2] = ((short)(ucStra[5]<<8| ucStra[4]))/32768.0*16;
                 system("clear");
-                printf("Num_Avail; %d",Num_Avail);
+                Num_Avail = serialDataAvail (fd);
+                printf("Num_Avail: %d",Num_Avail);
                 printf("a:%.3f %.3f %.3f ",Acceleration[0],Acceleration[1],Acceleration[2]); 
                 
                 AngleSpeed[0] = ((short)(ucStrw[1]<<8| ucStrw[0]))/32768.0*2000;
@@ -117,8 +132,11 @@ void countdown(int signum)
                 printf("A:%.2f %.2f %.2f\r\n",Angle[0],Angle[1],Angle[2]); 
                 all_count++;
                 printf("count: %d time: %d\n",all_count,TimeNow - TimeStart);
+                printf("DutyCycle[0]: %.2f\n",DutyCycle[0]);
+                fflush(stdout);
                 serialFlush(fd);
-                break;
+                //break;
+                return;
             }
         //write(STDERR_FILENO, msg, len);
         }
@@ -146,6 +164,7 @@ int main()
     getchar();
     softPwmWrite(PinNumber,11);
     printf("54now\n");
+    fflush(stdout);
     delay(800);
     softPwmWrite(PinNumber,12.6);
     printf("start!");
@@ -161,8 +180,8 @@ int main()
             //delay(10); //不知为何会影响计时器的循环？
             Calc_Dutycycle();
             softPwmWrite(PinNumber,DutyCycle[0]);
-            printf("DutyCycle[0]: %d\n",DutyCycle[0]);
-            fflush(stdout);
+            //printf("DutyCycle[0]DutyCycle[0]DutyCycle[0]DutyCycle[0]: %d\n",DutyCycle[0]);
+            //fflush(stdout);
         }  
     return 0;  
 } 
