@@ -112,6 +112,7 @@ int main()
         return 1;
     }
     softPwmCreate(PinNumber,0,20);//20*100=2000microseconds=500hz
+    /**
     softPwmWrite(PinNumber,19);
     printf("96now\n");
     getchar();
@@ -119,7 +120,10 @@ int main()
     printf("54now\n");
     fflush(stdout);
     delay(800);
-    softPwmWrite(PinNumber,12.6);
+    **/
+    printf("input to start");
+    getchar();
+    softPwmWrite(PinNumber,13.5);
     printf("start!");
     fflush(stdout);
     ret = pthread_create(&mpu6050,NULL, (void *)gyro_acc,NULL);
@@ -130,14 +134,14 @@ int main()
     }
     while(1)  
     {  
-        Calc_Dutycycle();
+        DutyCycle[1] = PidUpdate(_Pitch,Pitch,0,AngleSpeed[1]);
         softPwmWrite(PinNumber,DutyCycle[0]);
         //printf("DutyCycle: %d\n",DutyCycle[0]);
         //fflush(stdout);
     }  
 }
 
-
+/*****
 void PID_CAL(void)//PID计算函数
 {
 static float thr=0,rool=0,pitch=0,yaw=0;//控制量
@@ -223,4 +227,63 @@ if(FLY_ENABLE && (RC_DATA.THROTTLE>-400))//和解锁有关,未解锁或油门太
 MOTO_PWMRFLASH(Motor1,Motor2,Motor3,Motor4);
 else
 MOTO_PWMRFLASH(0,0,0,0);
+}
+****************/
+
+struct PID{  
+        double kp = 0.66;  
+        double ki = 0;
+        double kd = 0;
+        double desired;
+        double error;
+        double integ;//积分
+        double iLimit;
+        double deriv;//微分
+        double prevError;
+        double outP;
+        double outI;
+        double outD;
+}_Roll,_Pitch,_Yaw;  
+
+float PidUpdate(pidsuite* pid, const float measured,float expect,float gyro)
+{
+  float output;
+  static float lastoutput=0;
+
+  pid->desired=expect;//获取期望角度
+
+  pid->error = pid->desired - measured;//偏差：期望-测量值
+  
+  pid->integ += pid->error * IMU_UPDATE_DT;//偏差积分
+ 
+  if (pid->integ > pid->iLimit)//作积分限制
+  {
+    pid->integ = pid->iLimit;
+  }
+  else if (pid->integ < -pid->iLimit)
+  {
+    pid->integ = -pid->iLimit;
+  }
+
+ // pid->deriv = (pid->error - pid->prevError) / IMU_UPDATE_DT;//微分     应该可用陀螺仪角速度代替
+  pid->deriv = -gyro;
+  if(fabs(pid->error)>Piddeadband)//pid死区
+  {
+          pid->outP = pid->kp * pid->error;//方便独立观察
+          pid->outI = pid->ki * pid->integ;
+          pid->outD = pid->kd * pid->deriv;
+        
+          output = (pid->kp * pid->error) +
+                   (pid->ki * pid->integ) +
+                   (pid->kd * pid->deriv);
+  }
+  else
+  {
+    output=lastoutput;
+  }
+
+  pid->prevError = pid->error;//更新前一次偏差
+  lastoutput=output;
+
+  return output;
 }
