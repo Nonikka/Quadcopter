@@ -82,7 +82,7 @@ void gyro_acc()
             all_count++;
             printf("count: %d time: %d\n",all_count,TimeNow - TimeStart);
             printf("DutyCycle[0]: %.2f\n",DutyCycle[0]);
-            //serialFlush(fd);
+            serialFlush(fd);
             break;
             }
         }

@@ -100,3 +100,156 @@ int main(int argc, char *argv[])
 
    sleep(30);
 }
+④PID说明：http://blog.csdn.net/conquerwave/article/details/12873117
+小明接到这样一个任务：
+有一个水缸点漏水(而且漏水的速度还不一定固定不变)，
+要求水面高度维持在某个位置，
+一旦发现水面高度低于要求位置，就要往水缸里加水。 
+
+小明接到任务后就一直守在水缸旁边，
+时间长就觉得无聊，就跑到房里看小说了，
+每30分钟来检查一次水面高度。水漏得太快，
+每次小明来检查时，水都快漏完了，离要求的高度相差很远
+，小明改为每3分钟来检查一次，结果每次来水都没怎么漏
+，不需要加水，来得太频繁做的是无用功。几次试验后，
+确定每10分钟来检查一次。这个检查时间就称为采样周期。 
+
+开始小明用瓢加水，水龙头离水缸有十几米的距离，
+经常要跑好几趟才加够水，于是小明又改为用桶加，
+一加就是一桶，跑的次数少了，加水的速度也快了，
+但好几次将缸给加溢出了，不小心弄湿了几次鞋，小明又动脑筋，
+我不用瓢也不用桶，老子用盆，几次下来，发现刚刚好，不用跑太多次，
+也不会让水溢出。这个加水工具的大小就称为比例系数。 
+
+小明又发现水虽然不会加过量溢出了，有时会高过要求位置比较多
+，还是有打湿鞋的危险。他又想了个办法，在水缸上装一个漏斗，
+每次加水不直接倒进水缸，而是倒进漏斗让它慢慢加。这样溢出的问题解决了，
+但加水的速度又慢了，有时还赶不上漏水的速度。
+于是他试着变换不同大小口径的漏斗来控制加水的速度
+，最后终于找到了满意的漏斗。漏斗的时间就称为积分时间 。
+
+小明终于喘了一口，但任务的要求突然严了，
+水位控制的及时性要求大大提高，一旦水位过低，
+必须立即将水加到要求位置，而且不能高出太多，否则不给工钱。
+小明又为难了！于是他又开努脑筋，终于让它想到一个办法，常放一盆备用水在旁边，
+一发现水位低了，不经过漏斗就是一盆水下去，这样及时性是保证了，但水位有时会高多了。
+他又在要求水面位置上面一点将水凿一孔，再接一根管子到下面的备用桶里这样多出的水会从上面的孔里漏出来。
+这个水漏出的快慢就称为微分时间。
+
+
+大学时代做机器人时用的PID算法源代码：
+#define PID_Uint struct pid_uint
+PID_Uint
+{
+        int U_kk;
+        int ekk;
+        int ekkk;
+        int Ur;                                //限幅输出值,需初始化
+        int Un;                                //不灵敏区
+        //int multiple;                //PID系数的放大倍数，用整形数据的情况下，提高PID参数的设置精度          固定为256
+        int Kp;                                //比例，从小往大调
+        int Ti;                                //积分，从大往小调
+        int Td;                                //微分，用巡线板时设为0
+        int k1;                                //
+        int k2;
+        int k3;
+};
+
+/******************************************************************** 
+函 数 名：void Init_PID_uint(PID_uint *p)
+功    能：初始化PID参数
+说    明：调用本函数之前，应该先对Kp,Ti,Td做设置        ,简化了公式
+入口参数：PID单元的参数结构体 地址
+返 回 值：无
+***********************************************************************/
+void Init_PID_uint(PID_Uint *p)
+{
+        p->k1=(p->Kp)+(p->Kp)*1024/(p->Ti)+(p->Kp)*(p->Td)/1024;
+        p->k2=(p->Kp)+2*(p->Kp)*(p->Td)/1024;
+        p->k3=(p->Kp)*(p->Td)/1024;
+}
+/******************************************************************** 
+函 数 名：void reset_Uk(PID_Uint *p)
+功    能：初始化U_kk,ekk,ekkk
+说    明：在初始化时调用，改变PID参数时有可能需要调用
+入口参数：PID单元的参数结构体 地址
+返 回 值：无
+***********************************************************************/
+void reset_Uk(PID_Uint *p)
+{
+        p->U_kk=0;
+        p->ekk=0;
+        p->ekkk=0;
+}
+/******************************************************************** 
+函 数 名：int PID_commen(int set,int jiance,PID_Uint *p)
+功    能：通用PID函数
+说    明：求任意单个PID的控制量
+入口参数：期望值，实测值，PID单元结构体
+返 回 值：PID控制量
+***********************************************************************/
+int PID_common(int set,int jiance,PID_Uint *p)
+{
+        int ek,U_k=0;
+        ek=jiance-set;
+        if((ek>(p->Un))||(ek<-(p->Un)))                //积分不灵敏区
+                U_k=(p->U_kk)+(p->k1)*ek-(p->k2)*(p->ekk)+(p->k3)*(p->ekkk);
+        p->U_kk=U_k;
+           p->ekkk=p->ekk;
+        p->ekk=ek;
+        if(U_k>(p->Ur))                                        //限制最大输出量，
+                U_k=p->Ur;
+        if(U_k<-(p->Ur))
+                U_k=-(p->Ur);        
+        return U_k/1024; 
+}
+**************************************************
+typedef struct  
+{  
+  float desired;     //< set point   期望值  
+  float error;        //< error 误差  
+  float prevError;    //< previous error 上一次误差  
+  float integ;        //< integral积分参数  
+  float deriv;        //< derivative微分参数  
+  float kp;           //< proportional gain调整比例参数  
+  float ki;           //< integral gain调整积分参数  
+  float kd;           //< derivative gain调整微分参数  
+  float outP;         //< proportional output (debugging) 实际中这没用  
+  float outI;         //< integral output (debugging)  
+  float outD;         //< derivative output (debugging)  
+  float iLimit;      //< integral limit积分限制范围  
+} PidObject;  
+  
+//输入参数pid,    当前测量值， 是否更新误差  
+  
+float pidUpdate(PidObject* pid, const float measured, const bool updateError)  
+{  
+  float output;  
+  
+  if (updateError)  
+  {  
+    pid->error = pid->desired - measured;  // 误差为期望值与测量值之间的差值  
+  }  
+  
+  pid->integ += pid->error * IMU_UPDATE_DT;     //积分参数，IMU_UPDATE_DT也就是每调整漏斗大小的步辐  
+  if (pid->integ > pid->iLimit)                                    // 积分调整范围  
+  {  
+    pid->integ = pid->iLimit;  
+  }  
+  else if (pid->integ < -pid->iLimit)                          // 积分调整范围  
+  {  
+    pid->integ = -pid->iLimit;  
+  }                                                                                  //这个if是让积分参数在设定范围内。如果积分纠正范围过大，也就是没有加装漏斗的效果了。  
+  
+  pid->deriv = (pid->error - pid->prevError) / IMU_UPDATE_DT;     //微分参数，如果水缸里的水加多了可在这流出来  
+  
+// 这里能让你理解过冲现象【http://blog.csdn.net/ouyang_linux007/article/details/7419892】  
+  
+  output = (pid->kp * pid->error) +     // 输出最终的向水缸里加水的量  
+           (pid->ki * pid->integ) +  
+           (pid->kd * pid->deriv);  
+  
+  pid->prevError = pid->error;        
+  
+  return output;  
+}  

@@ -6,18 +6,22 @@
 int main ()
 {
     int level;
-    int PinNumber = 7;
+    int PinNumber1 = 7, PinNumber2 = 0;
     if (-1 == wiringPiSetup()){
     printf("Setup WiringPi failed!");
     return 1;}
-    softPwmCreate(PinNumber,0,20);//20*100=2000microseconds=500hz
-    softPwmWrite(PinNumber,19);
+    softPwmCreate(PinNumber1,0,20);//20*100=2000microseconds=500hz
+    softPwmCreate(PinNumber2,0,20);
+    softPwmWrite(PinNumber1,19);
+    softPwmWrite(PinNumber2,19);
     printf("96now\n");
     getchar();
-    softPwmWrite(PinNumber,11);
+    softPwmWrite(PinNumber1,11);
+    softPwmWrite(PinNumber2,11);
     printf("54now\n");
     delay(1000);
-    softPwmWrite(PinNumber,12.6);
+    softPwmWrite(PinNumber1,12.6);
+    softPwmWrite(PinNumber2,12.6);
     printf("start ,press to stop");
     getchar();
 

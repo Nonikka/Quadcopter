@@ -10,9 +10,12 @@
 #include <wiringSerial.h>
 #include <softPwm.h>
 #include <math.h>
+#define PinNumber1 7
+#define PinNumber2 0
+#define IMU_UPDATE_DT 10
+float Acceleration[3],AngleSpeed[3],Angle[3],Roll,Pitch,Yaw,DutyCycle[3],TARGET,Pid_Pitch;
 
-float Acceleration[3],AngleSpeed[3],Angle[3],Roll,Pitch,Yaw,DutyCycle[3];
-
+float PidUpdate(/*pidsuite* pid,*/ const float measured,float expect,float gyro);
 void gyro_acc()
 {
     int fd,i;
@@ -27,6 +30,7 @@ void gyro_acc()
         return  ;
     }
     TimeStart = millis();
+    delay(100);
     for(;;)
     {
         Re_buf[counter]=serialGetchar(fd);
@@ -65,24 +69,24 @@ void gyro_acc()
             Acceleration[0] = ((short)(ucStra[1]<<8| ucStra[0]))/32768.0*16;
             Acceleration[1] = ((short)(ucStra[3]<<8| ucStra[2]))/32768.0*16;
             Acceleration[2] = ((short)(ucStra[5]<<8| ucStra[4]))/32768.0*16;
-            system("clear");
+            //system("clear");
             Num_Avail = serialDataAvail (fd);
-            printf("Num_Avail; %d",Num_Avail);
-            printf("a:%.3f %.3f %.3f  ",Acceleration[0],Acceleration[1],Acceleration[2]); 
+            //printf("Num_Avail; %d",Num_Avail);
+            //printf("a:%.3f %.3f %.3f  ",Acceleration[0],Acceleration[1],Acceleration[2]); 
             
             AngleSpeed[0] = ((short)(ucStrw[1]<<8| ucStrw[0]))/32768.0*2000;
             AngleSpeed[1] = ((short)(ucStrw[3]<<8| ucStrw[2]))/32768.0*2000;
             AngleSpeed[2] = ((short)(ucStrw[5]<<8| ucStrw[4]))/32768.0*2000;
-            printf("w:%.3f %.3f %.3f  \n",AngleSpeed[0],AngleSpeed[1],AngleSpeed[2]); 
+            //printf("w:%.3f %.3f %.3f  \n",AngleSpeed[0],AngleSpeed[1],AngleSpeed[2]); 
 
             Angle[0] = ((short)(ucStrAngle[1]<<8| ucStrAngle[0]))/32768.0*180;
             Angle[1] = ((short)(ucStrAngle[3]<<8| ucStrAngle[2]))/32768.0*180;
             Angle[2] = ((short)(ucStrAngle[5]<<8| ucStrAngle[4]))/32768.0*180;
-            printf("A:%.2f %.2f %.2f\r\n",Angle[0],Angle[1],Angle[2]); 
+            //printf("A:%.2f %.2f %.2f\r\n",Angle[0],Angle[1],Angle[2]); 
             all_count++;
-            printf("count: %d time: %d\n",all_count,TimeNow - TimeStart);
-            printf("DutyCycle[0]: %.2f\n",DutyCycle[0]);
-            //serialFlush(fd);
+            //printf("count: %d time: %d\n",all_count,TimeNow - TimeStart);
+            //printf("DutyCycle[0]: %.2f\n",DutyCycle[0]);
+            serialFlush(fd);
             break;
             }
         }
@@ -105,13 +109,14 @@ void Calc_Dutycycle()
 int main()
 {
     pthread_t mpu6050;
-    int PinNumber = 7,ret;
+    int ret;
     if (-1 == wiringPiSetup())
     {
         printf("Setup WiringPi failed!");
         return 1;
     }
-    softPwmCreate(PinNumber,0,20);//20*100=2000microseconds=500hz
+    softPwmCreate(PinNumber1,0,20);//20*100=2000microseconds=500hz
+    softPwmCreate(PinNumber2,0,20);
     /**
     softPwmWrite(PinNumber,19);
     printf("96now\n");
@@ -121,9 +126,15 @@ int main()
     fflush(stdout);
     delay(800);
     **/
+    softPwmWrite(PinNumber1,19);
+    softPwmWrite(PinNumber2,19);
     printf("input to start");
     getchar();
-    softPwmWrite(PinNumber,13.5);
+    softPwmWrite(PinNumber1,11.2);
+    softPwmWrite(PinNumber2,11.2);
+    delay(1000);
+    softPwmWrite(PinNumber1,13.5);
+    softPwmWrite(PinNumber2,13.5);
     printf("start!");
     fflush(stdout);
     ret = pthread_create(&mpu6050,NULL, (void *)gyro_acc,NULL);
@@ -134,8 +145,17 @@ int main()
     }
     while(1)  
     {  
-        DutyCycle[1] = PidUpdate(_Pitch,Pitch,0,AngleSpeed[1]);
-        softPwmWrite(PinNumber,DutyCycle[0]);
+        Pid_Pitch = PidUpdate(Angle[1],0,AngleSpeed[1]);
+        system("clear");
+        //delay(100);
+        printf("Pid_Pitch: %.2f\n",Pid_Pitch);
+        printf("A:%.2f %.2f %.2f\n",Angle[0],Angle[1],Angle[2]); 
+        fflush(stdout);
+        DutyCycle[1] = 12 + Pid_Pitch;
+        DutyCycle[0] = 12 - Pid_Pitch;
+        softPwmWrite(PinNumber1,DutyCycle[1]);
+        softPwmWrite(PinNumber2,DutyCycle[0]);
+        
         //printf("DutyCycle: %d\n",DutyCycle[0]);
         //fflush(stdout);
     }  
@@ -231,58 +251,61 @@ MOTO_PWMRFLASH(0,0,0,0);
 ****************/
 
 struct PID{  
-        double kp = 0.66;  
-        double ki = 0;
-        double kd = 0;
+        double kp ;//proportionalgain调整比例参数 
+        double ki;   //integral gain调整积分参数 
+        double kd ;   //derivative gain调整微分参数 
         double desired;
         double error;
-        double integ;//积分
-        double iLimit;
-        double deriv;//微分
+        double integ;//integral积分参数
+        double iLimit ;
+        double deriv;//derivative微分参数 
         double prevError;
         double outP;
         double outI;
         double outD;
-}_Roll,_Pitch,_Yaw;  
+}pid/*,_Pitch,_Yaw*/;  
 
-float PidUpdate(pidsuite* pid, const float measured,float expect,float gyro)
+float PidUpdate(/*pidsuite* pid,*/ const float measured,float expect,float gyro)
 {
   float output;
   static float lastoutput=0;
-
-  pid->desired=expect;//获取期望角度
-
-  pid->error = pid->desired - measured;//偏差：期望-测量值
+  float Piddeadband=0.2;
+  pid.kp = 0.15;
+  pid.ki = 0;
+  pid.kd = 0;
+  pid.desired=expect;//获取期望角度
+  //pid.desired=0;
+  pid.error = pid.desired - measured;//偏差：期望-测量值
   
-  pid->integ += pid->error * IMU_UPDATE_DT;//偏差积分
+  pid.integ += pid.error * IMU_UPDATE_DT;//偏差积分，IMU_UPDATE_DT也就是每调整漏斗大小的步辐
  
-  if (pid->integ > pid->iLimit)//作积分限制
+  if (pid.integ >= pid.iLimit)//作积分限制
   {
-    pid->integ = pid->iLimit;
+    pid.integ = pid.iLimit;
   }
-  else if (pid->integ < -pid->iLimit)
+  else if (pid.integ < -pid.iLimit)
   {
-    pid->integ = -pid->iLimit;
+    pid.integ = -pid.iLimit;
   }
 
- // pid->deriv = (pid->error - pid->prevError) / IMU_UPDATE_DT;//微分     应该可用陀螺仪角速度代替
-  pid->deriv = -gyro;
-  if(fabs(pid->error)>Piddeadband)//pid死区
+ // pid.deriv = (pid.error - pid.prevError) / IMU_UPDATE_DT;//微分     应该可用陀螺仪角速度代替
+  pid.deriv = -gyro;
+  if(fabs(pid.error)>Piddeadband)//pid死区
   {
-          pid->outP = pid->kp * pid->error;//方便独立观察
-          pid->outI = pid->ki * pid->integ;
-          pid->outD = pid->kd * pid->deriv;
+          pid.outP = pid.kp * pid.error;//方便独立观察
+          pid.outI = pid.ki * pid.integ;
+          pid.outD = pid.kd * pid.deriv;
         
-          output = (pid->kp * pid->error) +
-                   (pid->ki * pid->integ) +
-                   (pid->kd * pid->deriv);
+          output = (pid.kp * pid.error) +
+                   (pid.ki * pid.integ) +
+                   (pid.kd * pid.deriv);
   }
   else
   {
     output=lastoutput;
   }
 
-  pid->prevError = pid->error;//更新前一次偏差
+  pid.prevError = pid.error;//更新前一次偏差
   lastoutput=output;
 
   return output;
