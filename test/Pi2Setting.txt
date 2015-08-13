@@ -100,6 +100,13 @@ int main(int argc, char *argv[])
 
    sleep(30);
 }
+
+***********************
+about wiringPi pin：
+header    wiringPi
+11        0
+7         7
+***********************
 ④PID说明：http://blog.csdn.net/conquerwave/article/details/12873117
 小明接到这样一个任务：
 有一个水缸点漏水(而且漏水的速度还不一定固定不变)，

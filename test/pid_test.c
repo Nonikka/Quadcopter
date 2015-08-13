@@ -14,15 +14,15 @@
 #define PinNumber2 0
 #define IMU_UPDATE_DT 10
 float Acceleration[3],AngleSpeed[3],Angle[3],Roll,Pitch,Yaw,DutyCycle[3],TARGET,Pid_Pitch;
-
+int all_count;
 float PidUpdate(/*pidsuite* pid,*/ const float measured,float expect,float gyro);
+
 void gyro_acc()
 {
     int fd,i;
     int Num_Avail;
     unsigned int TimeNow,TimeStart;
     unsigned char Re_buf[11],counter;
-    int all_count;
     unsigned char ucStra[6],ucStrw[6],ucStrAngle[6];
     if ((fd = serialOpen ("/dev/ttyAMA0", 115200)) < 0)
     {
@@ -30,7 +30,7 @@ void gyro_acc()
         return  ;
     }
     TimeStart = millis();
-    delay(100);
+    delay(50);
     for(;;)
     {
         Re_buf[counter]=serialGetchar(fd);
@@ -146,13 +146,22 @@ int main()
     while(1)  
     {  
         Pid_Pitch = PidUpdate(Angle[1],0,AngleSpeed[1]);
+        if (Pid_Pitch >  3.0)
+        {
+            Pid_Pitch = 3.0;
+        }
+        if (Pid_Pitch <  -3.0)
+        {
+            Pid_Pitch = -3.0;
+        }
         system("clear");
         //delay(100);
-        printf("Pid_Pitch: %.2f\n",Pid_Pitch);
+        printf("Pid_Pitch: %.2f all_count: %d\n",Pid_Pitch,all_count);
         printf("A:%.2f %.2f %.2f\n",Angle[0],Angle[1],Angle[2]); 
         fflush(stdout);
-        DutyCycle[1] = 12 + Pid_Pitch;
-        DutyCycle[0] = 12 - Pid_Pitch;
+        DutyCycle[1] = 12.4 + Pid_Pitch;
+        
+        DutyCycle[0] = 12.4 - Pid_Pitch;
         softPwmWrite(PinNumber1,DutyCycle[1]);
         softPwmWrite(PinNumber2,DutyCycle[0]);
         
@@ -270,9 +279,9 @@ float PidUpdate(/*pidsuite* pid,*/ const float measured,float expect,float gyro)
   float output;
   static float lastoutput=0;
   float Piddeadband=0.2;
-  pid.kp = 0.15;
-  pid.ki = 0;
-  pid.kd = 0;
+  pid.kp = 0.03;// 0.15以上就已经十分危险！！！！
+  pid.ki = 0.005;
+  pid.kd = 0.01;
   pid.desired=expect;//获取期望角度
   //pid.desired=0;
   pid.error = pid.desired - measured;//偏差：期望-测量值
@@ -289,6 +298,7 @@ float PidUpdate(/*pidsuite* pid,*/ const float measured,float expect,float gyro)
   }
 
  // pid.deriv = (pid.error - pid.prevError) / IMU_UPDATE_DT;//微分     应该可用陀螺仪角速度代替
+  //pid.deriv = -gyro;//注意是否跟自己的参数方向相反，不然会加剧振荡
   pid.deriv = -gyro;
   if(fabs(pid.error)>Piddeadband)//pid死区
   {
