@@ -16,12 +16,13 @@
 #define PinNumber3 2  //对应13
 #define PinNumber4 3  //对应15
 #define IMU_UPDATE_DT 10
-#define DEFAULT_POW 0.26
+#define DEFAULT_POW 0.32
 
-float Acceleration[3],AngleSpeed[3],Angle[3],Roll,Pitch,Yaw,DutyCycle[3],TARGET,Pid_Pitch;
+float Acceleration[3],AngleSpeed[3],Angle[3],Roll,Pitch,Yaw,DutyCycle[3],TARGET,Pid_Pitch,Pid_Roll;
 int all_count;
 
 float PidUpdate(/*pidsuite* pid,*/ const float measured,float expect,float gyro);
+float PidUpdate_roll(/*pidsuite* pid,*/ const float measured,float expect,float gyro);
 void PidInital();
 
 void gyro_acc()
@@ -174,17 +175,21 @@ int main()
     while(1)  
     {  
         Pid_Pitch = PidUpdate(Angle[1],0,AngleSpeed[1]);
-        
+        Pid_Roll = PidUpdate_roll(Angle[0],0,AngleSpeed[0]);
         system("clear");
         //delay(100);
-        printf("Pid_Pitch: %.2f all_count: %d\n",Pid_Pitch,all_count);
+        printf("Pid_Pitch: %.2f Pid_Roll:%.2f all_count: %d\n",Pid_Pitch,Pid_Roll,all_count);
         printf("A:%.2f %.2f %.2f\n",Angle[0],Angle[1],Angle[2]); 
         printf("gyro：Pitch：%.2f\n",AngleSpeed[1]); 
         fflush(stdout);
-        DutyCycle[3] = DEFAULT_POW + Pid_Pitch;
-        DutyCycle[2] = DEFAULT_POW - Pid_Pitch;
-        DutyCycle[1] = DEFAULT_POW + Pid_Pitch;
-        DutyCycle[0] = DEFAULT_POW - Pid_Pitch;
+        //DutyCycle[3] = DEFAULT_POW + Pid_Pitch - Pid_Roll;
+        //DutyCycle[2] = DEFAULT_POW - Pid_Pitch + Pid_Roll;
+        //DutyCycle[1] = DEFAULT_POW + Pid_Pitch + Pid_Roll;
+        //DutyCycle[0] = DEFAULT_POW - Pid_Pitch - Pid_Roll;
+        DutyCycle[3] = DEFAULT_POW  - Pid_Roll;
+        DutyCycle[2] = DEFAULT_POW  + Pid_Roll;
+        DutyCycle[1] = DEFAULT_POW  + Pid_Roll;
+        DutyCycle[0] = DEFAULT_POW  - Pid_Roll;
         PWMOut(PinNumber1,DutyCycle[1]);
         PWMOut(PinNumber2,DutyCycle[0]);
         PWMOut(PinNumber3,DutyCycle[3]);
@@ -207,15 +212,21 @@ struct PID{
         double outI;
         double outD;
         double lastoutput;
-}pid/*,_Pitch,_Yaw*/;  
+}pid,roll/*,_Pitch,_Yaw*/;  
 
 void PidInital()
 {
-  pid.kp = 0.0031;// p = 0.0029,d = 0.001可进行振荡 可能有点大，但是低角度回复又有点不足，最多有10度左右偏移
+  pid.kp = 0.0031;// p = 0.0029,d = 0.001可进行振荡 可能有点大，但是低角度回复又有点不足，最多有10度左右偏移 
+                  // p = 0.0031 d = 0.001 会有超调
   pid.ki = 0.00;
-  pid.kd = 0.001; //0.001可以进行有效抑制振荡 但是可能造成回复不足
+  pid.kd = 0.00106; //0.001可以进行有效抑制振荡 但是可能造成回复不足
   pid.iLimit = 0.00;
   pid.lastoutput = 0.00;
+  roll.kp = 0.0032;
+  roll.ki = 0.00;
+  roll.kd = 0.00133; 
+  roll.iLimit = 0.00;
+  roll.lastoutput = 0.00;
 }
 
 float PidUpdate(/*pidsuite* pid,*/ const float measured,float expect,float gyro)
@@ -264,5 +275,54 @@ float PidUpdate(/*pidsuite* pid,*/ const float measured,float expect,float gyro)
         output = -0.2;
     }
     pid.lastoutput=output;
+    return output;
+}
+
+float PidUpdate_roll(/*pidsuite* pid,*/ const float measured,float expect,float gyro)
+{
+    float output;
+    float Piddeadband=0.3; //就是PID死区，不进行转速更改的区域
+    
+    roll.desired=expect;//获取期望角度
+    //roll.desired=0;
+    roll.error = roll.desired - measured;//偏差：期望-测量值
+    
+    roll.integ += roll.error * IMU_UPDATE_DT;//偏差积分，IMU_UPDATE_DT也就是每调整漏斗大小的步辐
+   
+    if (roll.integ >= roll.iLimit)//作积分限制
+    {
+      roll.integ = roll.iLimit;
+    }
+    else if (roll.integ < -roll.iLimit)
+    {
+      roll.integ = -roll.iLimit;
+    }
+
+    // roll.deriv = (roll.error - roll.prevError) / IMU_UPDATE_DT;//微分     应该可用陀螺仪角速度代替
+    //roll.deriv = -gyro;//注意是否跟自己的参数方向相反，不然会加剧振荡
+    roll.deriv = -gyro;
+    if(fabs(roll.error)>Piddeadband)//roll死区
+    {
+        roll.outP = roll.kp * roll.error;//方便独立观察
+        roll.outI = roll.ki * roll.integ;
+        roll.outD = roll.kd * roll.deriv;
+        output = (roll.kp * roll.error) + (roll.ki * roll.integ) + (roll.kd * roll.deriv);
+    }
+    else
+    {
+      output=roll.lastoutput;
+    }
+
+    roll.prevError = roll.error;//更新前一次偏差
+    
+    if (output >  0.2)
+    {
+        output = 0.2;
+    }
+    if (output <  -0.2)
+    {
+        output = -0.2;
+    }
+    roll.lastoutput=output;
     return output;
 }
