@@ -18,8 +18,8 @@
 #define IMU_UPDATE_DT 10
 #define MAX_ACC 0.52
 
-float Acceleration[3],AngleSpeed[3],Angle[3],Roll,Pitch,Yaw,DutyCycle[3],Accelerator,Pid_Pitch,Pid_Roll,Default_Acc = 0.32;
-int all_count;
+float Acceleration[3],AngleSpeed[3],Angle[3],Roll,Pitch,Yaw,DutyCycle[3],Accelerator,Pid_Pitch,Pid_Roll,Default_Acc = 0.2;
+int all_count,Pid_Count;
 
 float PidUpdate(/*pidsuite* pid,*/ const float measured,float expect,float gyro);
 float PidUpdate_roll(/*pidsuite* pid,*/ const float measured,float expect,float gyro);
@@ -210,18 +210,19 @@ int main()
     PidInital();
     while(1)  
     {  
-        Pid_Pitch = PidUpdate(Angle[1],0,AngleSpeed[1]);
-        Pid_Roll = PidUpdate_roll(Angle[0],0,AngleSpeed[0]);
+        //Pid_Pitch = PidUpdate(Angle[1],-1.6,AngleSpeed[1]);
+        Pid_Roll = PidUpdate_roll(Angle[0],1.7,AngleSpeed[0]);
+        Pid_Count ++ ;
         system("clear");
         //delay(100);
-        printf("Pid_Pitch: %.2f Pid_Roll:%.2f all_count: %d\n",Pid_Pitch,Pid_Roll,all_count);
+        printf("Pid_Pitch: %.2f Pid_Roll:%.2f all_count: %d\n Pid_Count: %d",Pid_Pitch,Pid_Roll,all_count,Pid_Count);
         printf("A:%.2f %.2f %.2f\n",Angle[0],Angle[1],Angle[2]); 
         printf("Default_Acc:%.2f gyro：Pitch：%.2f\n",Default_Acc,AngleSpeed[1]); 
         fflush(stdout);
-        //DutyCycle[3] = Default_Acc + Pid_Pitch - Pid_Roll;
-        //DutyCycle[2] = Default_Acc - Pid_Pitch + Pid_Roll;
-        //DutyCycle[1] = Default_Acc + Pid_Pitch + Pid_Roll;
-        //DutyCycle[0] = Default_Acc - Pid_Pitch - Pid_Roll;
+        //DutyCycle[3] = Default_Acc + Pid_Pitch - Pid_Roll;//+yaw
+        //DutyCycle[2] = Default_Acc - Pid_Pitch + Pid_Roll;//+yaw
+        //DutyCycle[1] = Default_Acc + Pid_Pitch + Pid_Roll;//-yaw
+        //DutyCycle[0] = Default_Acc - Pid_Pitch - Pid_Roll;//-yaw
         DutyCycle[3] = Default_Acc  - Pid_Roll;
         DutyCycle[2] = Default_Acc  + Pid_Roll;
         DutyCycle[1] = Default_Acc  + Pid_Roll;
@@ -257,12 +258,12 @@ void PidInital()
   pid.kp = 0.0031;// p = 0.0029,d = 0.001可进行振荡 可能有点大，但是低角度回复又有点不足，最多有10度左右偏移 
                   // p = 0.0031 d = 0.001 会有超调
   pid.ki = 0.00;
-  pid.kd = 0.00106; //0.001可以进行有效抑制振荡 但是可能造成回复不足
+  pid.kd = 0.00216; //0.001可以进行有效抑制振荡 但是可能造成回复不足
   pid.iLimit = 0.00;
   pid.lastoutput = 0.00;
-  roll.kp = 0.0032;
+  roll.kp = 0.0030;
   roll.ki = 0.00;
-  roll.kd = 0.00133; 
+  roll.kd = 0.0022; //0.0032，0.00133在悬挂电池时超调  0.0015时在32%油门时超调 0.0025未知震荡  0.0035可能是太大了，过于灵敏0.0018发散 0.0021接近等幅 0.0022有平稳征兆，不过电池没电不知是否被限制了功率
   roll.iLimit = 0.00;
   roll.lastoutput = 0.00;
 }
@@ -275,7 +276,7 @@ float PidUpdate(/*pidsuite* pid,*/ const float measured,float expect,float gyro)
     pid.desired=expect;//获取期望角度
     //pid.desired=0;
     pid.error = pid.desired - measured;//偏差：期望-测量值
-    
+    /*
     pid.integ += pid.error * IMU_UPDATE_DT;//偏差积分，IMU_UPDATE_DT也就是每调整漏斗大小的步辐
    
     if (pid.integ >= pid.iLimit)//作积分限制
@@ -286,15 +287,15 @@ float PidUpdate(/*pidsuite* pid,*/ const float measured,float expect,float gyro)
     {
       pid.integ = -pid.iLimit;
     }
-
+    */
     // pid.deriv = (pid.error - pid.prevError) / IMU_UPDATE_DT;//微分     应该可用陀螺仪角速度代替
     //pid.deriv = -gyro;//注意是否跟自己的参数方向相反，不然会加剧振荡
     pid.deriv = -gyro;
     if(fabs(pid.error)>Piddeadband)//pid死区
     {
-        pid.outP = pid.kp * pid.error;//方便独立观察
-        pid.outI = pid.ki * pid.integ;
-        pid.outD = pid.kd * pid.deriv;
+        //pid.outP = pid.kp * pid.error;//方便独立观察
+        //pid.outI = pid.ki * pid.integ;
+        //pid.outD = pid.kd * pid.deriv;
         output = (pid.kp * pid.error) + (pid.ki * pid.integ) + (pid.kd * pid.deriv);
     }
     else
@@ -324,7 +325,7 @@ float PidUpdate_roll(/*pidsuite* pid,*/ const float measured,float expect,float 
     roll.desired=expect;//获取期望角度
     //roll.desired=0;
     roll.error = roll.desired - measured;//偏差：期望-测量值
-    
+    /*
     roll.integ += roll.error * IMU_UPDATE_DT;//偏差积分，IMU_UPDATE_DT也就是每调整漏斗大小的步辐
    
     if (roll.integ >= roll.iLimit)//作积分限制
@@ -335,15 +336,15 @@ float PidUpdate_roll(/*pidsuite* pid,*/ const float measured,float expect,float 
     {
       roll.integ = -roll.iLimit;
     }
-
+    */
     // roll.deriv = (roll.error - roll.prevError) / IMU_UPDATE_DT;//微分     应该可用陀螺仪角速度代替
     //roll.deriv = -gyro;//注意是否跟自己的参数方向相反，不然会加剧振荡
     roll.deriv = -gyro;
     if(fabs(roll.error)>Piddeadband)//roll死区
     {
-        roll.outP = roll.kp * roll.error;//方便独立观察
-        roll.outI = roll.ki * roll.integ;
-        roll.outD = roll.kd * roll.deriv;
+        //roll.outP = roll.kp * roll.error;//方便独立观察
+        //roll.outI = roll.ki * roll.integ;
+        //roll.outD = roll.kd * roll.deriv;
         output = (roll.kp * roll.error) + (roll.ki * roll.integ) + (roll.kd * roll.deriv);
     }
     else
