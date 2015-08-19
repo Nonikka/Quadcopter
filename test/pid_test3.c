@@ -16,9 +16,9 @@
 #define PinNumber3 2  //对应13
 #define PinNumber4 3  //对应15
 #define IMU_UPDATE_DT 10
-#define MAX_ACC 0.52
+#define MAX_ACC 0.58
 
-float Acceleration[3],AngleSpeed[3],Angle[3],Roll,Pitch,Yaw,DutyCycle[3],Accelerator,Pid_Pitch,Pid_Roll,Default_Acc = 0.2;
+float Acceleration[3],AngleSpeed[3],Angle[3],Roll,Pitch,Yaw,DutyCycle[3],Accelerator,Pid_Pitch,Pid_Roll,Default_Acc = 0.4;
 int all_count,Pid_Count;
 
 float PidUpdate(/*pidsuite* pid,*/ const float measured,float expect,float gyro);
@@ -178,7 +178,7 @@ int main()
     softPwmWrite(PinNumber4,13.5);
     printf("start!");
     fflush(stdout);
-    ***************/
+    /***************/
     
     //启动方法2：最低油门拉起
     printf("Way 2:PWM in 0\% \n");
@@ -211,7 +211,7 @@ int main()
     while(1)  
     {  
         //Pid_Pitch = PidUpdate(Angle[1],-1.6,AngleSpeed[1]);
-        Pid_Roll = PidUpdate_roll(Angle[0],1.7,AngleSpeed[0]);
+        Pid_Roll = PidUpdate_roll(Angle[0],0,AngleSpeed[0]);
         Pid_Count ++ ;
         system("clear");
         //delay(100);
@@ -260,10 +260,20 @@ void PidInital()
   pid.ki = 0.00;
   pid.kd = 0.00216; //0.001可以进行有效抑制振荡 但是可能造成回复不足
   pid.iLimit = 0.00;
+  
   pid.lastoutput = 0.00;
-  roll.kp = 0.0030;
+  roll.kp = 0.00325;
   roll.ki = 0.00;
-  roll.kd = 0.0022; //0.0032，0.00133在悬挂电池时超调  0.0015时在32%油门时超调 0.0025未知震荡  0.0035可能是太大了，过于灵敏0.0018发散 0.0021接近等幅 0.0022有平稳征兆，不过电池没电不知是否被限制了功率
+  roll.kd = 0.001717; //0.0032，0.00133在悬挂电池时超调  0.0015时在32%油门时超调 0.0025未知震荡  0.0035可能是太大了，过于灵敏0.0018发散 0.0021接近等幅 0.0022有平稳征兆，不过电池没电不知是否被限制了功率 0.0023在新电池下发散振荡  0.0026在新电池下发散振荡 0.0032在新电池下发散振荡
+  //换p=0.0025 d=0.0032 依然发散 d=0.006 剧烈发散 0.011不行  0.001接近但是发散 可能是绳子的原因 0.0012发散 0.0015接近不怎么发散 可能是回复力太大
+  //换p=0.0023 还是轻微发散 油门32%测试：p0.0022 d0.00155 发散。  0.0021 0.0016：发散 但是不错了，可能是d太大了？ 0.0018，不懂了
+  //0.0020 0.00185 完全不行 0.0022 0.0018 估计在附近  0.0022 0.0017不行 0.0016 还需改进 0.0015 不行 0.155差不多？
+  //0.00215 0.00155 可能比上一个差点0.00218 0.00156 不行
+  //0.0022回复不足 改0.0028不足  0.0032 0.00152 回复不足 0.0036 0.00155 回复可能够了 就是d可能不够 0.0035 0.00159几乎是等幅振荡0.00162 可能还是不够
+  //0.0035 0.00165 还是有振荡 而且可能是反了 0.0017估计是太大了 导致回复不足 0.00162不够大 0.00164可能也不够 
+  //0.168太大0.163标记0.161标记0.16标记0.159可能不行 0.158不行0.1615不行1625不行0.163加剧 0.165可能太小 改0.0034 0.165不行 0.32不行 
+  //0.0031 0.00166有点回复不足但是振荡小点0.0032 0.00169目前最好 就是有偏角 0.00325 0.001717 有振荡 要调 有偏角
+  //0.002 0 太小 0.0025小
   roll.iLimit = 0.00;
   roll.lastoutput = 0.00;
 }
