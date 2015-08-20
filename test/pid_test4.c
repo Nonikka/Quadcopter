@@ -28,12 +28,13 @@ void PWMOut(int pin, float pwm);
 
 void gyro_acc()
 {
-    double kp = 0.0030,ki = 0.0088,kd = 0.0014;
+    double kp = 0.0032,ki = 0.0000,kd = 0.00144;
+    //0030 0088 0014 有偏角 p0.0031偏角更大 0.0029也是 i=0 小偏角 p0.00305 d0.00143 不错 i0.0005 偏角变大
     double pregyro ;
     double desired;
     double error;
     double integ;//integral积分参数
-    double iLimit ;
+    double iLimit =10 ;
     double deriv;//derivative微分参数 
     double prevError;
     double lastoutput;
@@ -116,7 +117,16 @@ void gyro_acc()
                 //desired=expect;//获取期望角度
     
                 error = desired - Angle[0];//偏差：期望-测量值
-                
+                if (error >= 3)
+                {   if (error >= 4.2)
+                    {
+                        error = error * 1.33;
+                    }
+                    else
+                    {
+                        error = error * 1.25;
+                    }
+                }
                 integ += error * IMU_UPDATE_DT;//偏差积分，IMU_UPDATE_DT也就是每调整漏斗大小的步辐
                
                 if (integ >= iLimit)//作积分限制
