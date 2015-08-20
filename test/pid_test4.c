@@ -20,7 +20,7 @@
 
 float Acceleration[3],AngleSpeed[3],Angle[3],Roll,Pitch,Yaw,DutyCycle[3],Accelerator,Pid_Pitch,Pid_Roll,Default_Acc = 0.38;
 int all_count,Pid_Count;
-
+float output;
 float PidUpdate(/*pidsuite* pid,*/ const float measured,float expect,float gyro);
 float PidUpdate_roll(/*pidsuite* pid,*/ const float measured,float expect,float gyro);
 void PidInital();
@@ -28,6 +28,18 @@ void PWMOut(int pin, float pwm);
 
 void gyro_acc()
 {
+    double kp = 0.0030,ki = 0.0088,kd = 0.0014;
+    double pregyro ;
+    double desired;
+    double error;
+    double integ;//integral积分参数
+    double iLimit ;
+    double deriv;//derivative微分参数 
+    double prevError;
+    double lastoutput;
+    
+    float Piddeadband=0.3;
+    
     int fd,i;
     int Num_Avail;
     unsigned int TimeNow,TimeStart;
@@ -101,6 +113,56 @@ void gyro_acc()
                 //printf("count:%d\t  angle:%f\t  time:",all_count, Angle[1], clock());
                 //printf("count: %d time: %d\n",all_count,TimeNow - TimeStart);
                 //printf("DutyCycle[0]: %.2f\n",DutyCycle[0]);
+                //desired=expect;//获取期望角度
+    
+                error = desired - Angle[0];//偏差：期望-测量值
+                
+                integ += error * IMU_UPDATE_DT;//偏差积分，IMU_UPDATE_DT也就是每调整漏斗大小的步辐
+               
+                if (integ >= iLimit)//作积分限制
+                {
+                  integ = iLimit;
+                }
+                else if (integ < -iLimit)
+                {
+                  integ = -iLimit;
+                }
+                
+                // roll.deriv = (roll.error - roll.prevError) / IMU_UPDATE_DT;//微分     应该可用陀螺仪角速度代替
+                //roll.deriv = -gyro;//注意是否跟自己的参数方向相反，不然会加剧振荡
+                deriv = -AngleSpeed[0];
+                if(fabs(error)>Piddeadband)//roll死区
+                {
+                    //roll.outP = roll.kp * roll.error;//方便独立观察
+                    //roll.outI = roll.ki * roll.integ;
+                    //roll.outD = roll.kd * roll.deriv;
+                    output = (kp * error) + (ki * integ) + (kd * deriv);
+                }
+                else
+                {
+                  output=lastoutput;
+                }
+
+                prevError = error;//更新前一次偏差
+                
+                if (output >  0.2)
+                {
+                    output = 0.2;
+                }
+                if (output <  -0.2)
+                {
+                    output = -0.2;
+                }
+                lastoutput=output;
+                DutyCycle[3] = Default_Acc  - output;
+                DutyCycle[2] = Default_Acc  + output;
+                DutyCycle[1] = Default_Acc  + output;
+                DutyCycle[0] = Default_Acc  - output;
+                PWMOut(PinNumber1,DutyCycle[1]);
+                PWMOut(PinNumber2,DutyCycle[0]);
+                PWMOut(PinNumber3,DutyCycle[3]);
+                PWMOut(PinNumber4,DutyCycle[2]);
+                Pid_Count ++ ;
                 serialFlush(fd);
                 break;
                 }
@@ -150,6 +212,7 @@ int main()
 {
     pthread_t mpu6050,transport;
     int ret;
+    unsigned int TimeNow,TimeStart;
     if (-1 == wiringPiSetup())
     {
         printf("Setup WiringPi failed!");
@@ -201,7 +264,7 @@ int main()
         printf ("Create mpu6050 thread error!\n");
         exit (1);
     }
-    
+    TimeStart = millis();
     ret = pthread_create(&transport,NULL, (void *)KeyBoard,NULL);
     if(ret!=0)
     {
@@ -209,15 +272,15 @@ int main()
         exit (1);
     }
     
-    PidInital();
+    //PidInital();
     while(1)  
     {  
-        Pid_Pitch = PidUpdate(Angle[1],-1.6,AngleSpeed[1]);
-        Pid_Roll = PidUpdate_roll(Angle[0],0,AngleSpeed[0]);
-        Pid_Count ++ ;
+        //Pid_Pitch = PidUpdate(Angle[1],-1.6,AngleSpeed[1]);
+        //Pid_Roll = PidUpdate_roll(Angle[0],0,AngleSpeed[0]);
+        TimeNow = millis();
         system("clear");
         //delay(100);
-        printf("Pid_Pitch: %.2f Pid_Roll:%.2f all_count: %d\n Pid_Count: %d",Pid_Pitch,Pid_Roll,all_count,Pid_Count);
+        printf("Pid_Pitch: %.2f Pid_Roll:%.2f all_count: %d\n Pid_Count: %d time:%d\n",Pid_Pitch,Pid_Roll,all_count,Pid_Count,TimeNow - TimeStart);
         printf("A:%.2f %.2f %.2f\n",Angle[0],Angle[1],Angle[2]); 
         printf("Default_Acc:%.2f gyro：Pitch：%.2f\n",Default_Acc,AngleSpeed[1]); 
         fflush(stdout);
@@ -225,20 +288,13 @@ int main()
         //DutyCycle[2] = Default_Acc - Pid_Pitch + Pid_Roll;//+yaw
         //DutyCycle[1] = Default_Acc + Pid_Pitch + Pid_Roll;//-yaw
         //DutyCycle[0] = Default_Acc - Pid_Pitch - Pid_Roll;//-yaw
-        DutyCycle[3] = Default_Acc  - Pid_Roll;
-        DutyCycle[2] = Default_Acc  + Pid_Roll;
-        DutyCycle[1] = Default_Acc  + Pid_Roll;
-        DutyCycle[0] = Default_Acc  - Pid_Roll;
-        PWMOut(PinNumber1,DutyCycle[1]);
-        PWMOut(PinNumber2,DutyCycle[0]);
-        PWMOut(PinNumber3,DutyCycle[3]);
-        PWMOut(PinNumber4,DutyCycle[2]);
+        
         
     }
 }
 
 
-
+/*
 struct PID{  
         double kp ;//proportionalgain调整比例参数 
         double ki;   //integral gain调整积分参数 
@@ -255,7 +311,7 @@ struct PID{
         double outD;
         double lastoutput;
 }pid,roll/*,_Pitch,_Yaw*/;  
-
+/*
 void PidInital()
 {
   pid.kp = 0.0031;// p = 0.0029,d = 0.001可进行振荡 可能有点大，但是低角度回复又有点不足，最多有10度左右偏移 
@@ -285,103 +341,4 @@ void PidInital()
   roll.iLimit = 14;
   roll.lastoutput = 0.00;
 }
-
-float PidUpdate(/*pidsuite* pid,*/ const float measured,float expect,float gyro)
-{
-    float output;
-    float Piddeadband=0.3; //就是PID死区，不进行转速更改的区域
-    
-    pid.desired=expect;//获取期望角度
-    //pid.desired=0;
-    pid.error = pid.desired - measured;//偏差：期望-测量值
-    /*
-    pid.integ += pid.error * IMU_UPDATE_DT;//偏差积分，IMU_UPDATE_DT也就是每调整漏斗大小的步辐
-   
-    if (pid.integ >= pid.iLimit)//作积分限制
-    {
-      pid.integ = pid.iLimit;
-    }
-    else if (pid.integ < -pid.iLimit)
-    {
-      pid.integ = -pid.iLimit;
-    }
-    */
-    // pid.deriv = (pid.error - pid.prevError) / IMU_UPDATE_DT;//微分     应该可用陀螺仪角速度代替
-    //pid.deriv = -gyro;//注意是否跟自己的参数方向相反，不然会加剧振荡
-    pid.deriv = -gyro + pid.pregyro;
-    
-    //if(fabs(pid.error)>Piddeadband)//pid死区
-    //{
-        //pid.outP = pid.kp * pid.error;//方便独立观察
-        //pid.outI = pid.ki * pid.integ;
-        //pid.outD = pid.kd * pid.deriv;
-        output = (pid.kp * pid.error) + (pid.ki * pid.integ) + (pid.kd * pid.deriv);
-    //}
-    //else
-    //{
-    //  output=pid.lastoutput;
-    //}
-
-    pid.prevError = pid.error;//更新前一次偏差
-    
-    if (output >  0.2)
-    {
-        output = 0.2;
-    }
-    if (output <  -0.2)
-    {
-        output = -0.2;
-    }
-    pid.lastoutput=output;
-    
-    return output;
-}
-
-float PidUpdate_roll(/*pidsuite* pid,*/ const float measured,float expect,float gyro)
-{
-    float output;
-    float Piddeadband=0.3; //就是PID死区，不进行转速更改的区域
-    
-    roll.desired=expect;//获取期望角度
-    
-    roll.error = roll.desired - measured;//偏差：期望-测量值
-    
-    roll.integ += roll.error * IMU_UPDATE_DT;//偏差积分，IMU_UPDATE_DT也就是每调整漏斗大小的步辐
-   
-    if (roll.integ >= roll.iLimit)//作积分限制
-    {
-      roll.integ = roll.iLimit;
-    }
-    else if (roll.integ < -roll.iLimit)
-    {
-      roll.integ = -roll.iLimit;
-    }
-    
-    // roll.deriv = (roll.error - roll.prevError) / IMU_UPDATE_DT;//微分     应该可用陀螺仪角速度代替
-    //roll.deriv = -gyro;//注意是否跟自己的参数方向相反，不然会加剧振荡
-    roll.deriv = -gyro;
-    if(fabs(roll.error)>Piddeadband)//roll死区
-    {
-        //roll.outP = roll.kp * roll.error;//方便独立观察
-        //roll.outI = roll.ki * roll.integ;
-        //roll.outD = roll.kd * roll.deriv;
-        output = (roll.kp * roll.error) + (roll.ki * roll.integ) + (roll.kd * roll.deriv);
-    }
-    else
-    {
-      output=roll.lastoutput;
-    }
-
-    roll.prevError = roll.error;//更新前一次偏差
-    
-    if (output >  0.2)
-    {
-        output = 0.2;
-    }
-    if (output <  -0.2)
-    {
-        output = -0.2;
-    }
-    roll.lastoutput=output;
-    return output;
-}
+*//**/
