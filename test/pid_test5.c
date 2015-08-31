@@ -16,9 +16,9 @@
 #define PinNumber3 2  //对应13
 #define PinNumber4 3  //对应15
 #define IMU_UPDATE_DT 0.01
-#define MAX_ACC 0.55
+#define MAX_ACC 0.58
 
-float Acceleration[3],AngleSpeed[3],Angle[3],Roll,Pitch,Yaw,DutyCycle[3],Accelerator,Pid_Pitch,Pid_Roll,Default_Acc = 0.2;
+float Acceleration[3],AngleSpeed[3],Angle[3],Roll,Pitch,Yaw,DutyCycle[3],Accelerator,Pid_Pitch,Pid_Roll,Default_Acc = 0.28;
 int all_count,Pid_Count;
 float output;
 float PidUpdate(/*pidsuite* pid,*/ const float measured,float expect,float gyro);
@@ -28,9 +28,8 @@ void PWMOut(int pin, float pwm);
 
 void gyro_acc()
 {
-    double kp = 0.031,ki = 0.000,kd = 0.002;
+    double kp = 0.0032,ki = 0.0000,kd = 0.00166;
     //0030 0088 0014 有偏角 p0.0031偏角更大 0.0029也是 i=0 小偏角 p0.00305 d0.00143 不错 i0.0005 偏角变大
-    //0032 0017
     double pregyro ;
     double desired;
     double error;
@@ -49,7 +48,8 @@ void gyro_acc()
     unsigned char ucStra[6],ucStrw[6],ucStrAngle[6];
     if ((fd = serialOpen ("/dev/ttyAMA0", 115200)) < 0)
     {
-        fprintf (stderr, "Unable to open serial device: %s\n", strerror (errno)) ;
+        printf ( "Unable to open serial device\n") ;
+        fflush(stdout);
         return  ;
     }
     TimeStart = millis();
@@ -118,21 +118,18 @@ void gyro_acc()
                 //desired=expect;//获取期望角度
     
                 error = desired - Angle[0];//偏差：期望-测量值
-                /*
-                    if (fabs(error) >= 2.8)
-                    {   
-                        if (fabs(error) >= 3.9)
-                        {
-                            error = error * 1.04;
-                        }
-                        else
-                        {
-                            error = error * 1.02;
-                        }
+                if (error >= 3)
+                {   if (error >= 4.2)
+                    {
+                        error = error * 1.33;
                     }
-                */
+                    else
+                    {
+                        error = error * 1.25;
+                    }
+                }
                 integ += error * IMU_UPDATE_DT;//偏差积分，IMU_UPDATE_DT也就是每调整漏斗大小的步辐
-                
+               
                 if (integ >= iLimit)//作积分限制
                 {
                   integ = iLimit;
@@ -142,44 +139,32 @@ void gyro_acc()
                   integ = -iLimit;
                 }
                 
-                 deriv = (error - prevError) / IMU_UPDATE_DT;//微分     应该可用陀螺仪角速度代替
+                // roll.deriv = (roll.error - roll.prevError) / IMU_UPDATE_DT;//微分     应该可用陀螺仪角速度代替
                 //roll.deriv = -gyro;//注意是否跟自己的参数方向相反，不然会加剧振荡
-                //deriv = -AngleSpeed[0];
-                /*
-                if (fabs(deriv) > 15 && fabs(error) > 4)
+                deriv = -AngleSpeed[0];
+                if(fabs(error)>Piddeadband)//roll死区
                 {
-                    deriv = deriv * 0.8;
-                }*/
-                /*
-                if (error < 2 )
-                {
-                    deriv = deriv * 1.2;
-                }*/
-                //if(fabs(error)>Piddeadband)//roll死区
-                //{
                     //roll.outP = roll.kp * roll.error;//方便独立观察
                     //roll.outI = roll.ki * roll.integ;
                     //roll.outD = roll.kd * roll.deriv;
                     output = (kp * error) + (ki * integ) + (kd * deriv);
-                //}
-                //else
-                //{
-                  //output=lastoutput;
-                //}
+                }
+                else
+                {
+                  output=lastoutput;
+                }
 
                 prevError = error;//更新前一次偏差
                 
-                if (output >  0.15)
+                if (output >  0.1)
                 {
-                    output = 0.15;
+                    output = 0.1;
                 }
-                if (output <  -0.15)
+                if (output <  -0.1)
                 {
-                    output = -0.15;
+                    output = -0.1;
                 }
-                
-                //lastoutput = output;
-                
+                lastoutput=output;
                 DutyCycle[3] = Default_Acc  - output;
                 DutyCycle[2] = Default_Acc  + output;
                 DutyCycle[1] = Default_Acc  + output;
@@ -223,7 +208,7 @@ void KeyBoard()
         }
         else if (keychar == 'e')
         {
-            Default_Acc = 0.06;
+            Default_Acc = 0.02;
         }    
     }
 }
@@ -248,7 +233,7 @@ int main()
     softPwmCreate(PinNumber2,0,20);
     softPwmCreate(PinNumber3,0,20);
     softPwmCreate(PinNumber4,0,20);
-    /***********
+    /*
     //启动方法1：最高油门确认
     softPwmWrite(PinNumber1,19);
     softPwmWrite(PinNumber2,19);
@@ -306,9 +291,9 @@ int main()
         TimeNow = millis();
         system("clear");
         //delay(100);
-        printf("Pid_Roll:%.2f all_count: %d Pid_Count: %d time:%d\n",output,all_count,Pid_Count,TimeNow - TimeStart);
+        printf(" Pid_Roll:%.2f all_count: %d\n Pid_Count: %d time:%d\n",output,all_count,Pid_Count,TimeNow - TimeStart);
         printf("A:%.2f %.2f %.2f\n",Angle[0],Angle[1],Angle[2]); 
-        printf("Default_Acc:%.2f gyro：Pitch：%.2f roll :%.2f\n",Default_Acc,AngleSpeed[1],AngleSpeed[0]); 
+        printf("Default_Acc:%.2f gyro：Pitch：%.2f\n",Default_Acc,AngleSpeed[1]); 
         fflush(stdout);
         //DutyCycle[3] = Default_Acc + Pid_Pitch - Pid_Roll;//+yaw
         //DutyCycle[2] = Default_Acc - Pid_Pitch + Pid_Roll;//+yaw
@@ -318,53 +303,3 @@ int main()
         
     }
 }
-
-
-/*
-struct PID{  
-        double kp ;//proportionalgain调整比例参数 
-        double ki;   //integral gain调整积分参数 
-        double kd ;   //derivative gain调整微分参数 
-        double pregyro ;
-        double desired;
-        double error;
-        double integ;//integral积分参数
-        double iLimit ;
-        double deriv;//derivative微分参数 
-        double prevError;
-        double outP;
-        double outI;
-        double outD;
-        double lastoutput;
-}pid,roll/*,_Pitch,_Yaw*/;  
-/*
-void PidInital()
-{
-  pid.kp = 0.0031;// p = 0.0029,d = 0.001可进行振荡 可能有点大，但是低角度回复又有点不足，最多有10度左右偏移 
-                  // p = 0.0031 d = 0.001 会有超调
-  pid.ki = 0.00;
-  pid.kd = 0.00216; //0.001可以进行有效抑制振荡 但是可能造成回复不足
-  pid.iLimit = 0.00;
-  
-  pid.lastoutput = 0.00;
-  roll.kp = 0.0030;
-  roll.ki = 0.0088;
-  roll.kd = 0.0014; //0.0032，0.00133在悬挂电池时超调  0.0015时在32%油门时超调 0.0025未知震荡  0.0035可能是太大了，过于灵敏0.0018发散 0.0021接近等幅 0.0022有平稳征兆，不过电池没电不知是否被限制了功率 0.0023在新电池下发散振荡  0.0026在新电池下发散振荡 0.0032在新电池下发散振荡
-  //换p=0.0025 d=0.0032 依然发散 d=0.006 剧烈发散 0.011不行  0.001接近但是发散 可能是绳子的原因 0.0012发散 0.0015接近不怎么发散 可能是回复力太大
-  //换p=0.0023 还是轻微发散 油门32%测试：p0.0022 d0.00155 发散。  0.0021 0.0016：发散 但是不错了，可能是d太大了？ 0.0018，不懂了
-  //0.0020 0.00185 完全不行 0.0022 0.0018 估计在附近  0.0022 0.0017不行 0.0016 还需改进 0.0015 不行 0.155差不多？
-  //0.00215 0.00155 可能比上一个差点0.00218 0.00156 不行
-  //0.0022回复不足 改0.0028不足  0.0032 0.00152 回复不足 0.0036 0.00155 回复可能够了 就是d可能不够 0.0035 0.00159几乎是等幅振荡0.00162 可能还是不够
-  //0.0035 0.00165 还是有振荡 而且可能是反了 0.0017估计是太大了 导致回复不足 0.00162不够大 0.00164可能也不够 
-  //0.168太大0.163标记0.161标记0.16标记0.159可能不行 0.158不行0.1615不行1625不行0.163加剧 0.165可能太小 改0.0034 0.165不行 0.32不行 
-  //0.0031 0.00166有点回复不足但是振荡小点0.0032 0.00169目前最好 就是有偏角 0.00325 0.001717 有振荡 要调 有偏角
-  //0.002 0 太小 0.0025小
-  //00325 008 001717 可能d太大 偏角回不来 d0017偏角 i0085 好了一点但是回复可能不够 p0033 表现不错 但是感觉i太大 回复太久于是超调 i0.0825不错
-  //认为i不该有太长作用时间，改iLimit20->12 大偏角不回 改15 d0.0016 无效  00825改00855 可参考00165 差不多
-  //0033 00885 00165 iLimit 15 目前表现最好  0033 0088 0015也是差不多
-  //d001偏角 i改0.008震荡0.007震荡 p0.0035 有突然的加速导致超调 d0.0012no i0.008no
-  //0030 0088 0015参考 想让i的作用时间短一点曲线平滑一点
-  roll.iLimit = 14;
-  roll.lastoutput = 0.00;
-}
-*//**/
