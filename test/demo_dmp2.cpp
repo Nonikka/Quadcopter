@@ -45,170 +45,31 @@ float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gra
 // packet structure for InvenSense teapot demo
 uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' };
 
-float Acceleration[3],AngleSpeed[3],Angle[3],Roll,Pitch,Yaw,DutyCycle[4],Accelerator,Pid_Pitch=0,Pid_Roll=0,Default_Acc = 0.32,pid_in,pid_error,Roll_PError,Pitch_PError,Pre_Angle[3],pregyro;
+float Acceleration[3],AngleSpeed[3],Angle[3],Roll,Pitch,Yaw,DutyCycle[4],Accelerator,Pid_Pitch=0,Pid_Roll=0,Default_Acc = 0.3;
+float error=0;
 int All_Count=0,START_FLAG=0;
-
+float output=0;
+float PidUpdate(/*pidsuite* pid,*/ const float measured,float expect,float gyro);
+float PidUpdate_roll(/*pidsuite* pid,*/ const float measured,float expect,float gyro);
 void PWMOut(int pin, float pwm);
 
 MPU6050 mpu;
-struct PID
-{  
-  float kp;           //< proportional gain调整比例参数  
-  float ki;           //< integral gain调整积分参数  
-  float kd;           //< derivative gain调整微分参数  
-  float pregyro;
-  float desired;     //< set point   期望值  
-  float integ;        //< integral积分参数  
-  float iLimit;      //< integral limit积分限制范围  
-  float deriv;        //< derivative微分参数  
-  float preerror;    //< previous error 上一次误差  
-  float output;
-  float error;        //< error 误差  
-  float lastoutput;
-} ;
-
-PID Roll_Suit;
-PID Pitch_Suit;
-
-void Pid_Inital()
-{
-    Roll_Suit.kp = 0.0068;
-    Roll_Suit.ki = 0.000;
-    Roll_Suit.kd = 0.0018;
-    Roll_Suit.pregyro =0;
-    Roll_Suit.desired = -0.8;
-    Roll_Suit.integ=0;
-    Roll_Suit.iLimit =8;
-    Roll_Suit.deriv=0;
-    Roll_Suit.output = 0.00;
-    Roll_Suit.lastoutput=0;
-    
-    Pitch_Suit.kp = 0.0068;
-    Pitch_Suit.ki = 0.000;
-    Pitch_Suit.kd = 0.0018;
-    Pitch_Suit.pregyro =0;
-    Pitch_Suit.desired = 0.8;
-    Pitch_Suit.integ=0;
-    Pitch_Suit.iLimit =8;
-    Pitch_Suit.deriv=0;
-    Pitch_Suit.lastoutput=0;
-    Pitch_Suit.output = 0.00;
-}
-
-float Pid_Calc_R(PID pidsuite,float measured)
-{
-    //pidsuite.preerror = pidsuite.error;//更新前一次偏差
-    
-    pidsuite.error = pidsuite.desired - measured;//偏差：期望-测量值
-    pidsuite.error = pidsuite.error * 0.88 + pidsuite.preerror * 0.12;
-    //pid_error = pidsuite.error;//debug用
-    
-    pidsuite.integ += pidsuite.error * IMU_UPDATE_DT;//偏差积分，IMU_UPDATE_DT也就是每调整漏斗大小的步辐
-    
-    if (pidsuite.integ >= pidsuite.iLimit)//作积分限制
-    {
-      pidsuite.integ = pidsuite.iLimit;
-    }
-    else if (pidsuite.integ < -pidsuite.iLimit)
-    {
-      pidsuite.integ = -pidsuite.iLimit;
-    }
-    
-    pidsuite.deriv = (pidsuite.error - Pitch_PError) / 0.01;//微分     应该可用陀螺仪角速度代替
-    Pitch_PError = pidsuite.error;//debug用 更新前一次偏差
-    
-    AngleSpeed[0] = pidsuite.deriv;
-    if (fabs(pidsuite.deriv) < 20 )
-    {
-        if (fabs(pidsuite.deriv) < 10 )
-        {
-            pidsuite.deriv = pidsuite.deriv * 0.8;
-        }
-        else
-        {
-            pidsuite.deriv = pidsuite.deriv * 0.9;
-        }
-    }
-    pidsuite.output = (pidsuite.kp * pidsuite.error) + (pidsuite.ki * pidsuite.integ) + (pidsuite.kd * pidsuite.deriv);
-    pid_in = pidsuite.output;
-    
-    pregyro = pidsuite.pregyro;
-    if (pidsuite.output >  0.16)
-    {
-        pidsuite.output = 0.16;
-    }
-    if (pidsuite.output <  -0.16)
-    {
-        pidsuite.output = -0.16;
-    }
-    //output = output * 0.9 + lastoutput * 0.1;
-    if (fabs(pidsuite.error) < 0.3 )
-    {
-        pidsuite.output = pidsuite.lastoutput * 0.5;
-    }
-    pidsuite.lastoutput = pidsuite.output;
-    return pidsuite.output;
-}
-
-float Pid_Calc_P(PID pidsuite,float measured)
-{
-    //pidsuite.preerror = pidsuite.error;//更新前一次偏差
-    printf("e %.3f",Roll_PError);
-    
-    pidsuite.error = pidsuite.desired - measured;//偏差：期望-测量值
-    pidsuite.error = pidsuite.error * 0.88 + pidsuite.preerror * 0.12;
-    //pid_error = pidsuite.error;//debug用
-    
-    pidsuite.integ += pidsuite.error * IMU_UPDATE_DT;//偏差积分，IMU_UPDATE_DT也就是每调整漏斗大小的步辐
-    
-    if (pidsuite.integ >= pidsuite.iLimit)//作积分限制
-    {
-      pidsuite.integ = pidsuite.iLimit;
-    }
-    else if (pidsuite.integ < -pidsuite.iLimit)
-    {
-      pidsuite.integ = -pidsuite.iLimit;
-    }
-    
-    pidsuite.deriv = (pidsuite.error - Roll_PError) / 0.01;//微分     应该可用陀螺仪角速度代替
-    Roll_PError = pidsuite.error;//debug用 更新前一次偏差
-    
-    //AngleSpeed[0] = pidsuite.deriv;
-    if (fabs(pidsuite.deriv) < 20 )
-    {
-        if (fabs(pidsuite.deriv) < 10 )
-        {
-            pidsuite.deriv = pidsuite.deriv * 0.8;
-        }
-        else
-        {
-            pidsuite.deriv = pidsuite.deriv * 0.9;
-        }
-    }
-    pidsuite.output = (pidsuite.kp * pidsuite.error) + (pidsuite.ki * pidsuite.integ) + (pidsuite.kd * pidsuite.deriv);
-    //pid_in = pidsuite.output;
-    
-    //pregyro = pidsuite.pregyro;
-    if (pidsuite.output >  0.16)
-    {
-        pidsuite.output = 0.16;
-    }
-    if (pidsuite.output <  -0.16)
-    {
-        pidsuite.output = -0.16;
-    }
-    //output = output * 0.9 + lastoutput * 0.1;
-    if (fabs(pidsuite.error) < 0.3 )
-    {
-        pidsuite.output = pidsuite.lastoutput * 0.5;
-    }
-    pidsuite.lastoutput = pidsuite.output;
-    return pidsuite.output;
-}
 
 void* gyro_acc(void*)
 {
-    
+    //float kp = 0.00375,ki = 0.0000,kd = 0.00076;
+    float kp = 0.0068,ki = 0.000,kd = 0.0018;
+    //0030 0088 0014 有偏角 p0.0031偏角更大 0.0029也是 i=0 小偏角 p0.00305 d0.00143 不错 i0.0005 偏角变大
+    //0032 0017
+    float pregyro =0;
+    float desired = 0;
+    //double error;
+    float integ=0;//integral积分参数
+    float iLimit =8 ;
+    float deriv=0;//derivative微分参数 
+    float prevError=0;
+    float lastoutput=0;
+    //float Piddeadband=0.3;
     // initialize device
     printf("Initializing I2C devices...\n");
     mpu.initialize();
@@ -245,7 +106,6 @@ void* gyro_acc(void*)
         // 2 = DMP configuration updates failed
         // (if it's going to break, usually the code will be 1)
         printf("DMP Initialization failed (code %d)\n", devStatus);
-        return 0;
     }
     /*****************************************************/
     while(1)
@@ -289,26 +149,89 @@ void* gyro_acc(void*)
         Angle[0] = ypr[2] * 180/M_PI;//此为Roll
         // display initial world-frame acceleration, adjusted to remove gravity
         // and rotated based on known orientation from quaternion
-        /*
+        
         mpu.dmpGetQuaternion(&q, fifoBuffer);
         mpu.dmpGetAccel(&aa, fifoBuffer);
         mpu.dmpGetGravity(&gravity, &q);
         mpu.dmpGetLinearAccelInWorld(&aaWorld, &aaReal, &q);
         //printf("aworld %6d %6d %6d    ", aaWorld.x, aaWorld.y, aaWorld.z);
-        //AngleSpeed[0] =  aaWorld.x;
-        //AngleSpeed[1] =  aaWorld.y;
-        //AngleSpeed[2] =  aaWorld.z;
-        */
+        AngleSpeed[0] =  aaWorld.x;
+        AngleSpeed[1] =  aaWorld.y;
+        AngleSpeed[2] =  aaWorld.z;
+        
         /****************************读取完毕*********************************/
-        Pid_Roll = Pid_Calc_R(Roll_Suit,Angle[0]);
-        Pid_Pitch = Pid_Calc_P(Pitch_Suit,Angle[1]);
+        error = desired - Angle[0];//偏差：期望-测量值
         All_Count = All_Count + 1;
-        DutyCycle[0] = Default_Acc  - Pid_Roll - Pid_Pitch;
-        DutyCycle[1] = Default_Acc  - Pid_Roll + Pid_Pitch;
+        error = error * 0.88 + prevError * 0.12;
+        /*
+        if (fabs(prevError - error ) > 12)
+        {
+            error = prevError;
+        }*/
+        
+        integ += error * IMU_UPDATE_DT;//偏差积分，IMU_UPDATE_DT也就是每调整漏斗大小的步辐
+        
+        if (integ >= iLimit)//作积分限制
+        {
+          integ = iLimit;
+        }
+        else if (integ < -iLimit)
+        {
+          integ = -iLimit;
+        }
+        
+        deriv = (error - prevError) / IMU_UPDATE_DT;//微分     应该可用陀螺仪角速度代替
+        
+        AngleSpeed[0] = deriv;
+        if (fabs(deriv) < 20 )
+        {
+            if (fabs(deriv) < 10 )
+            {
+                deriv = deriv * 0.8;
+            }
+            else
+            {
+                deriv = deriv * 0.9;
+            }
+        }
+        //if(deriv
+        //roll.deriv = -gyro;//注意是否跟自己的参数方向相反，不然会加剧振荡
+        
+        //deriv = -AngleSpeed[0];
+        /*
+        if (fabs(pregyro - deriv) > 20)
+        {
+            deriv = deriv * 0.5 + pregyro * 0.5;
+        }
+        */
+        output = (kp * error) + (ki * integ) + (kd * deriv);
+        
+        
+        prevError = error;//更新前一次偏差
+        pregyro = deriv;
+        if (output >  0.16)
+        {
+            output = 0.16;
+        }
+        if (output <  -0.16)
+        {
+            output = -0.16;
+        }
+        Pid_Roll = output;
+        //output = output * 0.9 + lastoutput * 0.1;
+        if (fabs(error) < 0.3 )
+        {
+            output = lastoutput * 0.5;
+        }
+        lastoutput = output;
+        
+        DutyCycle[0] = Default_Acc  - output;
+        DutyCycle[1] = Default_Acc  - output;
         //DutyCycle[0] = Default_Acc;
+        
         //DutyCycle[1] = Default_Acc;
-        DutyCycle[2] = Default_Acc  + Pid_Roll - Pid_Pitch;
-        DutyCycle[3] = Default_Acc  + Pid_Roll + Pid_Pitch;
+        DutyCycle[2] = Default_Acc  + output;
+        DutyCycle[3] = Default_Acc  + output;
         //DutyCycle[2] = Default_Acc;
         //DutyCycle[3] = Default_Acc;
         
@@ -349,19 +272,13 @@ void* KeyBoard(void*)
             delay(200);
             Default_Acc = 0.03;
             delay(200);
-        }
-        else if (keychar == 'r')
-        {
-            Default_Acc = 0.05;
-            delay(200);
-            Default_Acc = 0.03;
-            delay(200);
-            PWMOut(PinNumber1,0.03);
-            PWMOut(PinNumber2,0.03);
-            PWMOut(PinNumber3,0.03);
-            PWMOut(PinNumber4,0.03);
-            return 0;
-        }
+            
+            //PWMOut(PinNumber1,0.03);
+            //PWMOut(PinNumber2,0.03);
+            //PWMOut(PinNumber3,0.03);
+            //PWMOut(PinNumber4,0.03);
+            
+        }    
     }
 }
 
@@ -377,7 +294,6 @@ int main()
     pthread_t mpu6050,transport;
     int ret;
     unsigned int TimeNow,TimeStart;
-    Pid_Inital();
     if (-1 == wiringPiSetup())
     {
         printf("Setup WiringPi failed!");
@@ -436,7 +352,6 @@ int main()
     printf("input to start!\n");
     fflush(stdout);
     getchar();
-    
     START_FLAG = 1;
     PWMOut(PinNumber1,0.06);
     PWMOut(PinNumber2,0.06);
@@ -454,11 +369,14 @@ int main()
     }
     while(1)  
     {  
+        //Pid_Pitch = PidUpdate(Angle[1],-1.6,AngleSpeed[1]);
+        //Pid_Roll = PidUpdate_roll(Angle[0],0,AngleSpeed[0]);
         TimeNow = millis();
         system("clear");
-        printf("Pid_Roll:%.4f  pid_error:%.3f  pid_pError:%.3f pregyro %.3f All_Count: %d",Pid_Roll,pid_error,Roll_PError,pregyro,All_Count);
+        //delay(100);
+        printf("Pid_Roll:%.4f   error %.3f  All_Count: %d time:%d\n",Pid_Roll,error,All_Count,TimeNow - TimeStart);
         printf("A:%.2f %.2f %.2f\n",Angle[0],Angle[1],Angle[2]); 
-        printf("Default_Acc:%.2f gyro： roll :%.2f\n",Default_Acc,AngleSpeed[0]); 
+        printf("Default_Acc:%.2f gyro：Pitch：%.2f roll :%.2f\n",Default_Acc,AngleSpeed[1],AngleSpeed[0]); 
         fflush(stdout);
         //DutyCycle[3] = Default_Acc + Pid_Pitch - Pid_Roll;//+yaw
         //DutyCycle[2] = Default_Acc - Pid_Pitch + Pid_Roll;//+yaw
