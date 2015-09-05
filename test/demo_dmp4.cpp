@@ -22,7 +22,7 @@
 #define PinNumber3 2  
 #define PinNumber4 3  
 #define IMU_UPDATE_DT 0.01
-#define MAX_ACC 0.59
+#define MAX_ACC 0.55
 #define OUTPUT_READABLE_YAWPITCHROLL
 #define OUTPUT_READABLE_WORLDACCEL
 // MPU control/status vars
@@ -45,13 +45,13 @@ float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gra
 // packet structure for InvenSense teapot demo
 uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' };
 
-float Acceleration[3],AngleSpeed[3],Angle[3],Roll,Pitch,Yaw,DutyCycle[4],Accelerator,Pid_Pitch=0,Pid_Roll=0,Pid_Yaw=0,Default_Acc = 0.32,pid_in,pid_error,Roll_PError,Pitch_PError,Yaw_PError,pregyro,Inital_Yaw[4],Inital_Roll[4],Inital_Pitch[4];
-int All_Count=0,START_FLAG=0,Inital=0;
+float Acceleration[3],AngleSpeed[3],Angle[3],Roll,Pitch,Yaw,DutyCycle[4],Accelerator,Pid_Pitch=0,Pid_Roll=0,Default_Acc = 0.2,pid_in,pid_error,Roll_PError,Pitch_PError,Pre_Angle[3],pregyro;
+int All_Count=0,START_FLAG=0;
 
 void PWMOut(int pin, float pwm);
 
 MPU6050 mpu;
-struct PID
+typedef struct 
 {  
   float kp;           //< proportional gain调整比例参数  
   float ki;           //< integral gain调整积分参数  
@@ -65,46 +65,43 @@ struct PID
   float output;
   float error;        //< error 误差  
   float lastoutput;
-} ;
+} PID_Suite;
 
-PID Roll_Suit;
-PID Pitch_Suit;
-PID Yaw_Suit;
+PID_Suite Roll_Suite;
+PID_Suite Pitch_Suite;
+PID_Suite Yaw_Suite;
 
 void Pid_Inital()
 {
-    Roll_Suit.kp = 0.0068;
-    Roll_Suit.ki = 0.000;
-    Roll_Suit.kd = 0.0018;
-    Roll_Suit.pregyro =0;
-    Roll_Suit.desired = 1;
-    Roll_Suit.integ=0;
-    Roll_Suit.iLimit =8;
-    Roll_Suit.deriv=0;
-    Roll_Suit.output = 0.00;
-    Roll_Suit.lastoutput=0;
+    Roll_Suite.kp = 0.0068;
+    Roll_Suite.ki = 0.000;
+    Roll_Suite.kd = 0.0018;
+    Roll_Suite.pregyro =0;
+    Roll_Suite.desired = -0.8;
+    Roll_Suite.integ=0;
+    Roll_Suite.iLimit =8;
+    Roll_Suite.deriv=0;
+    Roll_Suite.output = 0.00;
+    Roll_Suite.lastoutput=0;
     
-    Pitch_Suit.kp = 0.0068;
-    Pitch_Suit.ki = 0.000;
-    Pitch_Suit.kd = 0.0018;
-    Pitch_Suit.pregyro =0;
-    Pitch_Suit.desired = -0.7;
-    Pitch_Suit.integ=0;
-    Pitch_Suit.iLimit =8;
-    Pitch_Suit.deriv=0;
-    Pitch_Suit.lastoutput=0;
-    Pitch_Suit.output = 0.00;
-    
-    Yaw_Suit.kp = 0.003;
-    Yaw_Suit.kd = 0.002;
+    Pitch_Suite.kp = 0.0068;
+    Pitch_Suite.ki = 0.000;
+    Pitch_Suite.kd = 0.0018;
+    Pitch_Suite.pregyro =0;
+    Pitch_Suite.desired = 0.8;
+    Pitch_Suite.integ=0;
+    Pitch_Suite.iLimit =8;
+    Pitch_Suite.deriv=0;
+    Pitch_Suite.lastoutput=0;
+    Pitch_Suite.output = 0.00;
 }
 
-float Pid_Calc_R(PID pidsuite,float measured)
+float Pid_Calc(PID_Suite pidsuite,float measured)
 {
     //pidsuite.preerror = pidsuite.error;//更新前一次偏差
     
-    pidsuite.error = pidsuite.desired - measured + Inital_Roll[3] ;//偏差：期望-测量值
-    pidsuite.error = pidsuite.error * 0.88 + Roll_PError * 0.12;
+    pidsuite.error = pidsuite.desired - measured;//偏差：期望-测量值
+    pidsuite.error = pidsuite.error * 0.88 + pidsuite.preerror * 0.12;
     //pid_error = pidsuite.error;//debug用
     
     pidsuite.integ += pidsuite.error * IMU_UPDATE_DT;//偏差积分，IMU_UPDATE_DT也就是每调整漏斗大小的步辐
@@ -118,8 +115,8 @@ float Pid_Calc_R(PID pidsuite,float measured)
       pidsuite.integ = -pidsuite.iLimit;
     }
     
-    pidsuite.deriv = (pidsuite.error - Roll_PError) / 0.01;//微分     应该可用陀螺仪角速度代替
-    Roll_PError = pidsuite.error;//debug用 更新前一次偏差
+    pidsuite.deriv = (pidsuite.error - pidsuite.preerror) / IMU_UPDATE_DT;//微分     应该可用陀螺仪角速度代替
+    pidsuite.preerror = pidsuite.error;//debug用 更新前一次偏差
     
     AngleSpeed[0] = pidsuite.deriv;
     if (fabs(pidsuite.deriv) < 20 )
@@ -154,119 +151,10 @@ float Pid_Calc_R(PID pidsuite,float measured)
     return pidsuite.output;
 }
 
-float Pid_Calc_P(PID pidsuite,float measured)
-{
-    //pidsuite.preerror = pidsuite.error;//更新前一次偏差
-    
-    pidsuite.error = pidsuite.desired - measured + Inital_Pitch[3];//偏差：期望-测量值
-    pidsuite.error = pidsuite.error * 0.88 + Pitch_PError * 0.12;
-    //pid_error = pidsuite.error;//debug用
-    
-    pidsuite.integ += pidsuite.error * IMU_UPDATE_DT;//偏差积分，IMU_UPDATE_DT也就是每调整漏斗大小的步辐
-    
-    if (pidsuite.integ >= pidsuite.iLimit)//作积分限制
-    {
-      pidsuite.integ = pidsuite.iLimit;
-    }
-    else if (pidsuite.integ < -pidsuite.iLimit)
-    {
-      pidsuite.integ = -pidsuite.iLimit;
-    }
-    
-    pidsuite.deriv = (pidsuite.error - Pitch_PError) / 0.01;//微分     应该可用陀螺仪角速度代替
-    Pitch_PError = pidsuite.error;//debug用 更新前一次偏差
-    
-    //AngleSpeed[0] = pidsuite.deriv;
-    if (fabs(pidsuite.deriv) < 20 )
-    {
-        if (fabs(pidsuite.deriv) < 10 )
-        {
-            pidsuite.deriv = pidsuite.deriv * 0.8;
-        }
-        else
-        {
-            pidsuite.deriv = pidsuite.deriv * 0.9;
-        }
-    }
-    pidsuite.output = (pidsuite.kp * pidsuite.error) + (pidsuite.ki * pidsuite.integ) + (pidsuite.kd * pidsuite.deriv);
-    //pid_in = pidsuite.output;
-    
-    //pregyro = pidsuite.pregyro;
-    if (pidsuite.output >  0.16)
-    {
-        pidsuite.output = 0.16;
-    }
-    if (pidsuite.output <  -0.16)
-    {
-        pidsuite.output = -0.16;
-    }
-    //output = output * 0.9 + lastoutput * 0.1;
-    if (fabs(pidsuite.error) < 0.3 )
-    {
-        pidsuite.output = pidsuite.lastoutput * 0.5;
-    }
-    pidsuite.lastoutput = pidsuite.output;
-    return pidsuite.output;
-}
-
-float Pid_Calc_Y(PID pidsuite,float measured,float desired)
-{
-    //pidsuite.preerror = pidsuite.error;//更新前一次偏差
-    
-    pidsuite.error = desired - measured;//偏差：期望-测量值
-    pidsuite.error = pidsuite.error * 0.88 + Yaw_PError * 0.12;
-    //pid_error = pidsuite.error;//debug用
-    
-    pidsuite.integ += pidsuite.error * IMU_UPDATE_DT;//偏差积分，IMU_UPDATE_DT也就是每调整漏斗大小的步辐
-    
-    if (pidsuite.integ >= pidsuite.iLimit)//作积分限制
-    {
-      pidsuite.integ = pidsuite.iLimit;
-    }
-    else if (pidsuite.integ < -pidsuite.iLimit)
-    {
-      pidsuite.integ = -pidsuite.iLimit;
-    }
-    
-    pidsuite.deriv = (pidsuite.error - Yaw_PError) / 0.01;//微分     应该可用陀螺仪角速度代替
-    Yaw_PError = pidsuite.error;//debug用 更新前一次偏差
-    
-    //AngleSpeed[0] = pidsuite.deriv;
-    if (fabs(pidsuite.deriv) < 20 )
-    {
-        if (fabs(pidsuite.deriv) < 10 )
-        {
-            pidsuite.deriv = pidsuite.deriv * 0.8;
-        }
-        else
-        {
-            pidsuite.deriv = pidsuite.deriv * 0.9;
-        }
-    }
-    pidsuite.output = (pidsuite.kp * pidsuite.error) + (pidsuite.ki * pidsuite.integ) + (pidsuite.kd * pidsuite.deriv);
-    //pid_in = pidsuite.output;
-    
-    //pregyro = pidsuite.pregyro;
-    if (pidsuite.output >  0.16)
-    {
-        pidsuite.output = 0.16;
-    }
-    if (pidsuite.output <  -0.16)
-    {
-        pidsuite.output = -0.16;
-    }
-    //output = output * 0.9 + lastoutput * 0.1;
-    if (fabs(pidsuite.error) < 0.3 )
-    {
-        pidsuite.output = pidsuite.lastoutput * 0.5;
-    }
-    pidsuite.lastoutput = pidsuite.output;
-    return pidsuite.output;
-}
 
 void* gyro_acc(void*)
 {
-    int i = 0;
+    
     // initialize device
     printf("Initializing I2C devices...\n");
     mpu.initialize();
@@ -334,71 +222,47 @@ void* gyro_acc(void*)
         } 
         else if (fifoCount >= 42) 
         {
-            // read a packet from FIFO
-            mpu.getFIFOBytes(fifoBuffer, packetSize);
-            
-            // display Euler angles in degrees
-            mpu.dmpGetQuaternion(&q, fifoBuffer);
-            mpu.dmpGetGravity(&gravity, &q);
-            mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-            //printf("ypr  %7.2f %7.2f %7.2f  ", ypr[0] * 180/M_PI, ypr[1] * 180/M_PI, ypr[2] * 180/M_PI);
-            Angle[2] = ypr[0] * 180/M_PI;
-            Angle[1] = ypr[1] * 180/M_PI;//此为Pitch
-            Angle[0] = ypr[2] * 180/M_PI;//此为Roll
-            
-            // display initial world-frame acceleration, adjusted to remove gravity
-            // and rotated based on known orientation from quaternion
-            /*
-            mpu.dmpGetQuaternion(&q, fifoBuffer);
-            mpu.dmpGetAccel(&aa, fifoBuffer);
-            mpu.dmpGetGravity(&gravity, &q);
-            mpu.dmpGetLinearAccelInWorld(&aaWorld, &aaReal, &q);
-            //printf("aworld %6d %6d %6d    ", aaWorld.x, aaWorld.y, aaWorld.z);
-            //AngleSpeed[0] =  aaWorld.x;
-            //AngleSpeed[1] =  aaWorld.y;
-            //AngleSpeed[2] =  aaWorld.z;
-            */
-            /****************************读取完毕*********************************/
-            if (Inital <= 300)
-            {
-                Inital ++;
-                if (Inital % 98 == 1)
-                {
-                Inital_Roll[i] = Angle[0];
-                Inital_Pitch[i] = Angle[1];
-                Inital_Yaw[i] = Angle[2];
-                printf("Roll:%.2f Pitch:%.2f Yaw:%.2f",Inital_Roll[i],Inital_Pitch[i],Inital_Yaw[i]);
-                i++;
-                printf("%d\n",Inital);
-                fflush(stdout);
-                if (i == 3)
-                {
-                    Inital_Yaw[3] = (Inital_Yaw[0] + Inital_Yaw[1] + Inital_Yaw[2]) / 3;
-                    Inital_Roll[3] =(Inital_Roll[0] + Inital_Roll[1] + Inital_Roll[2]) / 3;
-                    Inital_Pitch[3] = (Inital_Pitch[0] + Inital_Pitch[1] + Inital_Pitch[2]) / 3;
-                }
-                }
-            }
-            else
-            {
-                Pid_Roll = Pid_Calc_R(Roll_Suit,Angle[0]);
-                Pid_Pitch = Pid_Calc_P(Pitch_Suit,Angle[1]);
-                Pid_Yaw = Pid_Calc_Y(Yaw_Suit,Angle[2],Inital_Yaw[3]);
-                All_Count = All_Count + 1;
-                DutyCycle[0] = Default_Acc  - Pid_Roll - Pid_Pitch; //- Pid_Yaw;
-                DutyCycle[1] = Default_Acc  - Pid_Roll + Pid_Pitch; //+ Pid_Yaw;
-                //DutyCycle[0] = Default_Acc;
-                //DutyCycle[1] = Default_Acc;
-                DutyCycle[2] = Default_Acc  + Pid_Roll - Pid_Pitch; //+ Pid_Yaw;
-                DutyCycle[3] = Default_Acc  + Pid_Roll + Pid_Pitch; //- Pid_Yaw;
-                //DutyCycle[2] = Default_Acc;
-                //DutyCycle[3] = Default_Acc;
-            
-                PWMOut(PinNumber1,DutyCycle[0]);
-                PWMOut(PinNumber2,DutyCycle[1]);
-                PWMOut(PinNumber3,DutyCycle[2]);
-                PWMOut(PinNumber4,DutyCycle[3]);
-            }
+        // read a packet from FIFO
+        mpu.getFIFOBytes(fifoBuffer, packetSize);
+        
+        // display Euler angles in degrees
+        mpu.dmpGetQuaternion(&q, fifoBuffer);
+        mpu.dmpGetGravity(&gravity, &q);
+        mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+        //printf("ypr  %7.2f %7.2f %7.2f  ", ypr[0] * 180/M_PI, ypr[1] * 180/M_PI, ypr[2] * 180/M_PI);
+        Angle[2] = ypr[0] * 180/M_PI;
+        Angle[1] = ypr[1] * 180/M_PI;//此为Pitch
+        Angle[0] = ypr[2] * 180/M_PI;//此为Roll
+        // display initial world-frame acceleration, adjusted to remove gravity
+        // and rotated based on known orientation from quaternion
+        /*
+        mpu.dmpGetQuaternion(&q, fifoBuffer);
+        mpu.dmpGetAccel(&aa, fifoBuffer);
+        mpu.dmpGetGravity(&gravity, &q);
+        mpu.dmpGetLinearAccelInWorld(&aaWorld, &aaReal, &q);
+        //printf("aworld %6d %6d %6d    ", aaWorld.x, aaWorld.y, aaWorld.z);
+        //AngleSpeed[0] =  aaWorld.x;
+        //AngleSpeed[1] =  aaWorld.y;
+        //AngleSpeed[2] =  aaWorld.z;
+        */
+        /****************************读取完毕*********************************/
+        Pid_Roll = Pid_Calc(&Roll_Suite,Angle[0]);
+        Pid_Pitch = Pid_Calc(&Pitch_Suite,Angle[1]);
+        All_Count = All_Count + 1;
+        DutyCycle[0] = Default_Acc  - Pid_Roll - Pid_Pitch;
+        DutyCycle[1] = Default_Acc  - Pid_Roll + Pid_Pitch;
+        //DutyCycle[0] = Default_Acc;
+        //DutyCycle[1] = Default_Acc;
+        DutyCycle[2] = Default_Acc  + Pid_Roll - Pid_Pitch;
+        DutyCycle[3] = Default_Acc  + Pid_Roll + Pid_Pitch;
+        //DutyCycle[2] = Default_Acc;
+        //DutyCycle[3] = Default_Acc;
+        
+        PWMOut(PinNumber1,DutyCycle[0]);
+        PWMOut(PinNumber2,DutyCycle[1]);
+        PWMOut(PinNumber3,DutyCycle[2]);
+        PWMOut(PinNumber4,DutyCycle[3]);
+        
         }
     }
 }
@@ -443,10 +307,6 @@ void* KeyBoard(void*)
             PWMOut(PinNumber3,0.03);
             PWMOut(PinNumber4,0.03);
             return 0;
-        }
-        else if (keychar == 'w')
-        {
-            Default_Acc = 0.5;
         }
     }
 }
@@ -531,6 +391,7 @@ int main()
     delay(500);
     
     /*********************/
+    getchar();
     ret = pthread_create(&transport,NULL,KeyBoard,NULL);
     if(ret!=0)
     {
@@ -545,5 +406,9 @@ int main()
         printf("A:%.2f %.2f %.2f\n",Angle[0],Angle[1],Angle[2]); 
         printf("Default_Acc:%.2f gyro： roll :%.2f\n",Default_Acc,AngleSpeed[0]); 
         fflush(stdout);
+        //DutyCycle[3] = Default_Acc + Pid_Pitch - Pid_Roll;//+yaw
+        //DutyCycle[2] = Default_Acc - Pid_Pitch + Pid_Roll;//+yaw
+        //DutyCycle[1] = Default_Acc + Pid_Pitch + Pid_Roll;//-yaw
+        //DutyCycle[0] = Default_Acc - Pid_Pitch - Pid_Roll;//-yaw
     }
 }

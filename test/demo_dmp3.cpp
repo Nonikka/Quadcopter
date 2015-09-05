@@ -45,7 +45,7 @@ float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gra
 // packet structure for InvenSense teapot demo
 uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' };
 
-float Acceleration[3],AngleSpeed[3],Angle[3],Roll,Pitch,Yaw,DutyCycle[4],Accelerator,Pid_Pitch=0,Pid_Roll=0,Default_Acc = 0.32,pid_in,pid_error,Roll_PError,Pitch_PError,Pre_Angle[3],pregyro;
+float Acceleration[3],AngleSpeed[3],Angle[3],Roll,Pitch,Yaw,DutyCycle[4],Accelerator,Pid_Pitch=0,Pid_Roll=0,Default_Acc = 0.05,pid_in,pid_error,Roll_PError,Pitch_PError,Pre_Angle[3],pregyro;
 int All_Count=0,START_FLAG=0;
 
 void PWMOut(int pin, float pwm);
