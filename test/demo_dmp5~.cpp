@@ -57,7 +57,7 @@ struct PID
   float ki;           //< integral gain调整积分参数  
   float kd;           //< derivative gain调整微分参数  
   float pregyro;
-  //float desired;     //< set point   期望值  
+  float desired;     //< set point   期望值  
   float integ;        //< integral积分参数  
   float iLimit;      //< integral limit积分限制范围  
   float deriv;        //< derivative微分参数  
@@ -77,7 +77,7 @@ void Pid_Inital()
     Roll_Suit.ki = 0.000;
     Roll_Suit.kd = 0.0018;
     Roll_Suit.pregyro =0;
-    //Roll_Suit.desired = 1;
+    Roll_Suit.desired = 1;
     Roll_Suit.integ=0;
     Roll_Suit.iLimit =8;
     Roll_Suit.deriv=0;
@@ -88,7 +88,7 @@ void Pid_Inital()
     Pitch_Suit.ki = 0.000;
     Pitch_Suit.kd = 0.0018;
     Pitch_Suit.pregyro =0;
-    //Pitch_Suit.desired = -0.7;
+    Pitch_Suit.desired = -0.7;
     Pitch_Suit.integ=0;
     Pitch_Suit.iLimit =8;
     Pitch_Suit.deriv=0;
@@ -99,12 +99,12 @@ void Pid_Inital()
     Yaw_Suit.kd = 0.002;
 }
 
-float Pid_Calc(PID &pidsuite,float measured,float desired,float Inital_Error)
+float Pid_Calc_R(PID pidsuite,float measured)
 {
     //pidsuite.preerror = pidsuite.error;//更新前一次偏差
     
-    pidsuite.error = desired - measured + Inital_Error ;//偏差：期望-测量值
-    pidsuite.error = pidsuite.error * 0.88 + pidsuite.preerror * 0.12;
+    pidsuite.error = pidsuite.desired - measured + Inital_Roll[3] ;//偏差：期望-测量值
+    pidsuite.error = pidsuite.error * 0.88 + Roll_PError * 0.12;
     //pid_error = pidsuite.error;//debug用
     
     pidsuite.integ += pidsuite.error * IMU_UPDATE_DT;//偏差积分，IMU_UPDATE_DT也就是每调整漏斗大小的步辐
@@ -118,8 +118,8 @@ float Pid_Calc(PID &pidsuite,float measured,float desired,float Inital_Error)
       pidsuite.integ = -pidsuite.iLimit;
     }
     
-    pidsuite.deriv = (pidsuite.error - pidsuite.preerror) / 0.01;//微分     应该可用陀螺仪角速度代替
-    pidsuite.preerror = pidsuite.error;//debug用 更新前一次偏差
+    pidsuite.deriv = (pidsuite.error - Roll_PError) / 0.01;//微分     应该可用陀螺仪角速度代替
+    Roll_PError = pidsuite.error;//debug用 更新前一次偏差
     
     AngleSpeed[0] = pidsuite.deriv;
     if (fabs(pidsuite.deriv) < 20 )
@@ -137,6 +137,116 @@ float Pid_Calc(PID &pidsuite,float measured,float desired,float Inital_Error)
     pid_in = pidsuite.output;
     
     pregyro = pidsuite.pregyro;
+    if (pidsuite.output >  0.16)
+    {
+        pidsuite.output = 0.16;
+    }
+    if (pidsuite.output <  -0.16)
+    {
+        pidsuite.output = -0.16;
+    }
+    //output = output * 0.9 + lastoutput * 0.1;
+    if (fabs(pidsuite.error) < 0.3 )
+    {
+        pidsuite.output = pidsuite.lastoutput * 0.5;
+    }
+    pidsuite.lastoutput = pidsuite.output;
+    return pidsuite.output;
+}
+
+float Pid_Calc_P(PID pidsuite,float measured)
+{
+    //pidsuite.preerror = pidsuite.error;//更新前一次偏差
+    
+    pidsuite.error = pidsuite.desired - measured + Inital_Pitch[3];//偏差：期望-测量值
+    pidsuite.error = pidsuite.error * 0.88 + Pitch_PError * 0.12;
+    //pid_error = pidsuite.error;//debug用
+    
+    pidsuite.integ += pidsuite.error * IMU_UPDATE_DT;//偏差积分，IMU_UPDATE_DT也就是每调整漏斗大小的步辐
+    
+    if (pidsuite.integ >= pidsuite.iLimit)//作积分限制
+    {
+      pidsuite.integ = pidsuite.iLimit;
+    }
+    else if (pidsuite.integ < -pidsuite.iLimit)
+    {
+      pidsuite.integ = -pidsuite.iLimit;
+    }
+    
+    pidsuite.deriv = (pidsuite.error - Pitch_PError) / 0.01;//微分     应该可用陀螺仪角速度代替
+    Pitch_PError = pidsuite.error;//debug用 更新前一次偏差
+    
+    //AngleSpeed[0] = pidsuite.deriv;
+    if (fabs(pidsuite.deriv) < 20 )
+    {
+        if (fabs(pidsuite.deriv) < 10 )
+        {
+            pidsuite.deriv = pidsuite.deriv * 0.8;
+        }
+        else
+        {
+            pidsuite.deriv = pidsuite.deriv * 0.9;
+        }
+    }
+    pidsuite.output = (pidsuite.kp * pidsuite.error) + (pidsuite.ki * pidsuite.integ) + (pidsuite.kd * pidsuite.deriv);
+    //pid_in = pidsuite.output;
+    
+    //pregyro = pidsuite.pregyro;
+    if (pidsuite.output >  0.16)
+    {
+        pidsuite.output = 0.16;
+    }
+    if (pidsuite.output <  -0.16)
+    {
+        pidsuite.output = -0.16;
+    }
+    //output = output * 0.9 + lastoutput * 0.1;
+    if (fabs(pidsuite.error) < 0.3 )
+    {
+        pidsuite.output = pidsuite.lastoutput * 0.5;
+    }
+    pidsuite.lastoutput = pidsuite.output;
+    return pidsuite.output;
+}
+
+float Pid_Calc_Y(PID pidsuite,float measured,float desired)
+{
+    //pidsuite.preerror = pidsuite.error;//更新前一次偏差
+    
+    pidsuite.error = desired - measured;//偏差：期望-测量值
+    pidsuite.error = pidsuite.error * 0.88 + Yaw_PError * 0.12;
+    //pid_error = pidsuite.error;//debug用
+    
+    pidsuite.integ += pidsuite.error * IMU_UPDATE_DT;//偏差积分，IMU_UPDATE_DT也就是每调整漏斗大小的步辐
+    
+    if (pidsuite.integ >= pidsuite.iLimit)//作积分限制
+    {
+      pidsuite.integ = pidsuite.iLimit;
+    }
+    else if (pidsuite.integ < -pidsuite.iLimit)
+    {
+      pidsuite.integ = -pidsuite.iLimit;
+    }
+    
+    pidsuite.deriv = (pidsuite.error - Yaw_PError) / 0.01;//微分     应该可用陀螺仪角速度代替
+    Yaw_PError = pidsuite.error;//debug用 更新前一次偏差
+    
+    //AngleSpeed[0] = pidsuite.deriv;
+    if (fabs(pidsuite.deriv) < 20 )
+    {
+        if (fabs(pidsuite.deriv) < 10 )
+        {
+            pidsuite.deriv = pidsuite.deriv * 0.8;
+        }
+        else
+        {
+            pidsuite.deriv = pidsuite.deriv * 0.9;
+        }
+    }
+    pidsuite.output = (pidsuite.kp * pidsuite.error) + (pidsuite.ki * pidsuite.integ) + (pidsuite.kd * pidsuite.deriv);
+    //pid_in = pidsuite.output;
+    
+    //pregyro = pidsuite.pregyro;
     if (pidsuite.output >  0.16)
     {
         pidsuite.output = 0.16;
@@ -271,9 +381,9 @@ void* gyro_acc(void*)
             }
             else
             {
-                Pid_Roll = Pid_Calc(Roll_Suit,Angle[0],1,Inital_Roll[3]);
-                Pid_Pitch = Pid_Calc(Pitch_Suit,Angle[1],-0.7,Inital_Pitch[3]);
-                Pid_Yaw = Pid_Calc(Yaw_Suit,Angle[2],0,Inital_Yaw[3]);
+                Pid_Roll = Pid_Calc_R(Roll_Suit,Angle[0]);
+                Pid_Pitch = Pid_Calc_P(Pitch_Suit,Angle[1]);
+                Pid_Yaw = Pid_Calc_Y(Yaw_Suit,Angle[2],Inital_Yaw[3]);
                 All_Count = All_Count + 1;
                 DutyCycle[0] = Default_Acc  - Pid_Roll - Pid_Pitch; //- Pid_Yaw;
                 DutyCycle[1] = Default_Acc  - Pid_Roll + Pid_Pitch; //+ Pid_Yaw;
