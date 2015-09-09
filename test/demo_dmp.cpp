@@ -45,8 +45,8 @@ float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gra
 // packet structure for InvenSense teapot demo
 uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' };
 
-float Acceleration[3],AngleSpeed[3],Angle[3],Roll,Pitch,Yaw,DutyCycle[4],Accelerator,Pid_Pitch=0,Pid_Roll=0,Pid_Yaw=0,Default_Acc = 0.32,pid_in,pid_error,Roll_PError,Pitch_PError,Yaw_PError,pregyro,Inital_Yaw[4],Inital_Roll[4],Inital_Pitch[4];
-int All_Count=0,START_FLAG=0,Inital=0;
+float Acceleration[3],AngleSpeed[3],Angle[3],Roll,Pitch,Yaw,DutyCycle[4],Accelerator,Pid_Pitch=0,Pid_Roll=0,Pid_Yaw=0,Default_Acc = 0.03,pid_in,pid_error,Roll_PError,Pitch_PError,Yaw_PError,pregyro,Inital_Yaw[7],Inital_Roll[7],Inital_Pitch[7];
+int All_Count=0,START_FLAG=0,Inital=0,PID_ENABLE=0;
 
 void PWMOut(int pin, float pwm);
 
@@ -137,13 +137,13 @@ float Pid_Calc(PID &pidsuite,float measured,float desired,float Inital_Error)
     pid_in = pidsuite.output;
     
     pregyro = pidsuite.pregyro;
-    if (pidsuite.output >  0.16)
+    if (pidsuite.output >  0.12)
     {
-        pidsuite.output = 0.16;
+        pidsuite.output = 0.12;
     }
-    if (pidsuite.output <  -0.16)
+    if (pidsuite.output <  -0.12)
     {
-        pidsuite.output = -0.16;
+        pidsuite.output = -0.12;
     }
     //output = output * 0.9 + lastoutput * 0.1;
     if (fabs(pidsuite.error) < 0.3 )
@@ -151,12 +151,16 @@ float Pid_Calc(PID &pidsuite,float measured,float desired,float Inital_Error)
         pidsuite.output = pidsuite.lastoutput * 0.5;
     }
     pidsuite.lastoutput = pidsuite.output;
+    if(PID_ENABLE = 0)
+    {
+        return 0;
+    }
     return pidsuite.output;
 }
 
 void* gyro_acc(void*)
 {
-    int i = 0;
+    //int i = 0;
     // initialize device
     printf("Initializing I2C devices...\n");
     mpu.initialize();
@@ -249,7 +253,8 @@ void* gyro_acc(void*)
             //AngleSpeed[2] =  aaWorld.z;
             */
             /****************************读取完毕*********************************/
-            if (Inital <= 300)
+            /*
+            if (Inital <= 600)
             {
                 Inital ++;
                 if (Inital % 98 == 1)
@@ -257,38 +262,38 @@ void* gyro_acc(void*)
                 Inital_Roll[i] = Angle[0];
                 Inital_Pitch[i] = Angle[1];
                 Inital_Yaw[i] = Angle[2];
-                printf("Roll:%.2f Pitch:%.2f Yaw:%.2f",Inital_Roll[i],Inital_Pitch[i],Inital_Yaw[i]);
+                printf("\nRoll:%.2f Pitch:%.2f Yaw:%.2f",Inital_Roll[i],Inital_Pitch[i],Inital_Yaw[i]);
                 i++;
-                printf("%d\n",Inital);
+                printf("\t%d\n",Inital);
                 fflush(stdout);
-                if (i == 3)
+                if (i == 6)
                 {
-                    Inital_Yaw[3] = (Inital_Yaw[0] + Inital_Yaw[1] + Inital_Yaw[2]) / 3;
-                    Inital_Roll[3] =(Inital_Roll[0] + Inital_Roll[1] + Inital_Roll[2]) / 3;
-                    Inital_Pitch[3] = (Inital_Pitch[0] + Inital_Pitch[1] + Inital_Pitch[2]) / 3;
+                    Inital_Yaw[6] = (Inital_Yaw[3] + Inital_Yaw[4] + Inital_Yaw[5]) / 3;
+                    Inital_Roll[6] =(Inital_Roll[3] + Inital_Roll[4] + Inital_Roll[5]) / 3;
+                    Inital_Pitch[6] = (Inital_Pitch[3] + Inital_Pitch[4] + Inital_Pitch[5]) / 3;
+                    printf("\n\nInital: Roll:%.2f Pitch:%.2f Yaw:%.2f\n\n\n",Inital_Roll[i],Inital_Pitch[i],Inital_Yaw[i]);
                 }
                 }
-            }
-            else
-            {
-                Pid_Roll = Pid_Calc(Roll_Suit,Angle[0],1,Inital_Roll[3]);
-                Pid_Pitch = Pid_Calc(Pitch_Suit,Angle[1],-0.7,Inital_Pitch[3]);
-                Pid_Yaw = Pid_Calc(Yaw_Suit,Angle[2],0,Inital_Yaw[3]);
-                All_Count = All_Count + 1;
-                DutyCycle[0] = Default_Acc  - Pid_Roll - Pid_Pitch; //- Pid_Yaw;
-                DutyCycle[1] = Default_Acc  - Pid_Roll + Pid_Pitch; //+ Pid_Yaw;
-                //DutyCycle[0] = Default_Acc;
-                //DutyCycle[1] = Default_Acc;
-                DutyCycle[2] = Default_Acc  + Pid_Roll - Pid_Pitch; //+ Pid_Yaw;
-                DutyCycle[3] = Default_Acc  + Pid_Roll + Pid_Pitch; //- Pid_Yaw;
-                //DutyCycle[2] = Default_Acc;
-                //DutyCycle[3] = Default_Acc;
+            }*/
             
-                PWMOut(PinNumber1,DutyCycle[0]);
-                PWMOut(PinNumber2,DutyCycle[1]);
-                PWMOut(PinNumber3,DutyCycle[2]);
-                PWMOut(PinNumber4,DutyCycle[3]);
-            }
+            Pid_Roll = Pid_Calc(Roll_Suit,Angle[0],1 ,0.38);
+            Pid_Pitch = Pid_Calc(Pitch_Suit,Angle[1],-0.7 ,-0.13);
+            Pid_Yaw = Pid_Calc(Yaw_Suit,Angle[2],0,-2);
+            All_Count = All_Count + 1;
+            DutyCycle[0] = Default_Acc  - Pid_Roll - Pid_Pitch; //- Pid_Yaw;
+            DutyCycle[1] = Default_Acc  - Pid_Roll + Pid_Pitch; //+ Pid_Yaw;
+            //DutyCycle[0] = Default_Acc;
+            //DutyCycle[1] = Default_Acc;
+            DutyCycle[2] = Default_Acc  + Pid_Roll - Pid_Pitch; //+ Pid_Yaw;
+            DutyCycle[3] = Default_Acc  + Pid_Roll + Pid_Pitch; //- Pid_Yaw;
+            //DutyCycle[2] = Default_Acc;
+            //DutyCycle[3] = Default_Acc;
+        
+            PWMOut(PinNumber1,DutyCycle[0]);
+            PWMOut(PinNumber2,DutyCycle[1]);
+            PWMOut(PinNumber3,DutyCycle[2]);
+            PWMOut(PinNumber4,DutyCycle[3]);
+            
         }
     }
 }
@@ -321,6 +326,7 @@ void* KeyBoard(void*)
             delay(200);
             Default_Acc = 0.03;
             delay(200);
+            PID_ENABLE = 0;
         }
         else if (keychar == 'r')
         {
@@ -354,6 +360,7 @@ int main()
     int ret;
     unsigned int TimeNow,TimeStart;
     Pid_Inital();
+    PID_ENABLE = 1;
     if (-1 == wiringPiSetup())
     {
         printf("Setup WiringPi failed!");
