@@ -52,7 +52,7 @@ uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\
 
 float Acceleration[3],AngleSpeed[3],Angle[3],Roll,Pitch,Yaw,DutyCycle[4],Accelerator,Pid_Pitch=0,Pid_Roll=0,Pid_Yaw=0,Default_Acc = 0.03,pid_in,pid_error,Roll_PError,Pitch_PError,Yaw_PError,pregyro,Inital_Yaw[7],Inital_Roll[7],Inital_Pitch[7];
 int All_Count=0,START_FLAG=0,Inital=0,PID_ENABLE=0,_axis[6];
-
+unsigned int TimeNow,TimeStart,TimeLastGet;
 void PWMOut(int pin, float pwm);
 
 MPU6050 mpu;
@@ -280,24 +280,37 @@ void* gyro_acc(void*)
                 }
                 }
             }*/
-            
-            Pid_Roll = Pid_Calc(Roll_Suit,Angle[0],1 ,0.38);
-            Pid_Pitch = Pid_Calc(Pitch_Suit,Angle[1],-0.7 ,-0.13);
-            Pid_Yaw = Pid_Calc(Yaw_Suit,Angle[2],0,-2);
+             
+            Pid_Roll = Pid_Calc(Roll_Suit,Angle[0],0.8 + 6.6 * _axis[1] * 0.01,0.38);
+            Pid_Pitch = Pid_Calc(Pitch_Suit,Angle[1],-0.6 + 6.6 * _axis[2] * 0.01,-0.13);
+            Pid_Yaw = Pid_Calc(Yaw_Suit,Angle[2],0,Inital_Yaw[1]);
             All_Count = All_Count + 1;
             Default_Acc = Default_Acc + _axis[0] * 0.0001 * 0.04;
-            if (Default_Acc >= 0.25)
+            TimeNow = millis();
+            if (abs(TimeNow - TimeLastGet) > 800)
             {
-                Default_Acc = 0.25;
+                if(Default_Acc > 0.4)
+                {
+                    Default_Acc = 0.44;
+                }
+                else
+                {
+                    Default_Acc = 0.03;
+                }
             }
-            DutyCycle[0] = Default_Acc  - Pid_Roll - Pid_Pitch; //- Pid_Yaw;
-            DutyCycle[1] = Default_Acc  - Pid_Roll + Pid_Pitch; //+ Pid_Yaw;
-            //DutyCycle[0] = Default_Acc;
-            //DutyCycle[1] = Default_Acc;
-            DutyCycle[2] = Default_Acc  + Pid_Roll - Pid_Pitch; //+ Pid_Yaw;
-            DutyCycle[3] = Default_Acc  + Pid_Roll + Pid_Pitch; //- Pid_Yaw;
-            //DutyCycle[2] = Default_Acc;
-            //DutyCycle[3] = Default_Acc;
+            
+            if (Default_Acc >= MAX_ACC)
+            {
+                Default_Acc = MAX_ACC;
+            }
+            if (Default_Acc <= 0.03)
+            {
+                Default_Acc = 0.03;
+            }
+            DutyCycle[0] = Default_Acc  - Pid_Roll - Pid_Pitch - Pid_Yaw;
+            DutyCycle[1] = Default_Acc  - Pid_Roll + Pid_Pitch + Pid_Yaw;
+            DutyCycle[2] = Default_Acc  + Pid_Roll - Pid_Pitch + Pid_Yaw;
+            DutyCycle[3] = Default_Acc  + Pid_Roll + Pid_Pitch - Pid_Yaw;
         
             PWMOut(PinNumber1,DutyCycle[0]);
             PWMOut(PinNumber2,DutyCycle[1]);
@@ -312,7 +325,7 @@ void* socket_joystick(void*)
 {
     int    socket_fd, connect_fd;  
     struct sockaddr_in     servaddr;  
-    char    buff[4096],axis1[4];  
+    char    buff[4096],axis1[5],axis2[5],axis3[5],axis4[5];  
     int     n;  
     //初始化Socket  
     if( (socket_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1 ){  
@@ -356,9 +369,25 @@ void* socket_joystick(void*)
     axis1[1] = buff[7];
     axis1[2] = buff[8];
     axis1[3] = buff[9];
-    _axis[0] =  atoi(axis1);
+    axis1[4] = '\0';
+    _axis[0] =  atoi(axis1);//油门控制
     
-    printf("\n\nrecv msg from client: %s %d \n\n",buff,_axis[0]);
+    axis2[0] = buff[11];
+    axis2[1] = buff[12];
+    axis2[2] = buff[13];
+    axis2[3] = buff[14];
+    axis2[4] = '\0';
+    _axis[1] =  atoi(axis2);//前后控制 roll
+    
+    axis3[0] = buff[16];
+    axis3[1] = buff[17];
+    axis3[2] = buff[18];
+    axis3[3] = buff[19];
+    axis3[4] = '\0';//不加会导致转换错误
+    _axis[2] =  atoi(axis3);//左右控制 pitch
+    
+    TimeLastGet = millis();
+    printf("\n\nrecv msg from client: %s %d %d %d\n\n",buff,_axis[0],_axis[1],_axis[2]);
     close(connect_fd);  
     }  
     close(socket_fd);  
@@ -424,7 +453,6 @@ int main()
 {
     pthread_t mpu6050,transport,joystick;
     int ret;
-    unsigned int TimeNow,TimeStart;
     Pid_Inital();
     PID_ENABLE = 1;
     if (-1 == wiringPiSetup())
@@ -441,8 +469,6 @@ int main()
         printf ("Create mpu6050 thread error!\n");
         exit (1);
     }
-    TimeStart = millis();
-    
     delay(50);
     mpu.setI2CMasterModeEnabled(false);//不知道这句话要放哪，此处有作用
     mpu.setI2CBypassEnabled(true);
@@ -492,7 +518,7 @@ int main()
     PWMOut(PinNumber3,0.06);
     PWMOut(PinNumber4,0.06);
     delay(500);
-    
+    TimeStart = millis();
     /*********************/
     ret = pthread_create(&transport,NULL,KeyBoard,NULL);
     if(ret!=0)
@@ -500,19 +526,20 @@ int main()
         printf ("Create KeyBoard thread error!\n");
         exit (1);
     }
-    ret = pthread_create(&joystick,NULL,socket_joystick,NULL);
+    ret = pthread_create(&joystick,NULL,socket_joystick,NULL);//启动socket手柄线程
     if(ret!=0)
     {
         printf ("Create joystick thread error!\n");
         exit (1);
     }
+    delay(4200);
+    Inital_Yaw[1] = Angle[2];
     while(1)  
     {  
-        TimeNow = millis();
         system("clear");
-        printf("Pid_Roll:%.4f  pid_error:%.3f  pid_pError:%.3f pregyro %.3f All_Count: %d",Pid_Roll,pid_error,Roll_PError,pregyro,All_Count);
+        printf("Pid_Roll:%.4f Pid_Yaw:%.4f pid_error:%.3f  pregyro %.3f All_Count: %d",Pid_Roll,Pid_Yaw,pid_error,pregyro,All_Count);
         printf("A:%.2f %.2f %.2f\n",Angle[0],Angle[1],Angle[2]); 
-        printf("Default_Acc:%.2f gyro： roll :%.2f\n",Default_Acc,AngleSpeed[0]); 
+        printf("Default_Acc:%.3f gyro： roll :%.2f\n",Default_Acc,AngleSpeed[0]); 
         fflush(stdout);
     }
 }

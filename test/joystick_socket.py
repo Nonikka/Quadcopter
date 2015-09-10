@@ -107,12 +107,13 @@ while done==False:
             textPrint.printt(screen, "Axis {} value: {:>6.3f}".format(i, axis) )
             _axis[i] = int(axis * 100)
         textPrint.unindent()
-        
+        #_axis[3] 为上下，_axis[4]为左右
+        #_axis[1] 控制油门
         try:
             fly_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             fly_sock.connect((QUAD_IP, QUAD_PORT))
             #fly_sock.send("axis: " + str("%03d %03d %03d %03d %03d %03d" %(_axis[0],_axis[1],_axis[2],_axis[3],_axis[4],_axis[5])))
-            fly_sock.send("axis: " + str("%04d" %-_axis[1]))
+            fly_sock.send("axis: " + str("%04d " %-_axis[1]) + str("%04d " %-_axis[3]) + str("%04d " %_axis[4]))
         except:
             print("sock connect failed")
             

@@ -11,7 +11,7 @@ int main(int argc, char** argv)
 {  
     int    socket_fd, connect_fd;  
     struct sockaddr_in     servaddr;  
-    char    buff[4096],axis1[4];  
+    char    buff[4096],axis1[5],axis2[5],axis3[5],axis4[5];  
     int     n;  
     int _axis[6];
     //初始化Socket  
@@ -56,8 +56,22 @@ int main(int argc, char** argv)
     axis1[1] = buff[7];
     axis1[2] = buff[8];
     axis1[3] = buff[9];
+    axis1[4] = '\0';
     _axis[0] =  atoi(axis1);
     
+    axis2[0] = buff[11];
+    axis2[1] = buff[12];
+    axis2[2] = buff[13];
+    axis2[3] = buff[14];
+    axis2[4] = '\0';
+    _axis[1] =  atoi(axis2);//前后控制
+    
+    axis3[0] = buff[16];
+    axis3[1] = buff[17];
+    axis3[2] = buff[18];
+    axis3[3] = buff[19];
+    axis3[4] = '\0';//不加会导致转换错误
+    _axis[2] =  atoi(axis3);//左右控制
     /*
     _axis[1] =  atoi(buff[10])*100 + atoi(buff[11])*10 + atoi(buff[12])*1;
     _axis[2] =  atoi(buff[14])*100 + atoi(buff[15])*10 + atoi(buff[16])*1;
@@ -65,7 +79,7 @@ int main(int argc, char** argv)
     _axis[4] =  atoi(buff[22])*100 + atoi(buff[23])*10 + atoi(buff[24])*1;
     _axis[5] =  atoi(buff[26])*100 + atoi(buff[27])*10 + atoi(buff[28])*1;
     printf("recv msg from client: %d %d %d %d %d %d\n",_axis[0],_axis[1],_axis[2],_axis[3],_axis[4],_axis[5]);*/
-    printf("recv msg from client: %s %d \n",buff,_axis[0]);
+    printf("\n\nrecv msg from client: %s %d %d %d\n\n",buff,_axis[0],_axis[1],_axis[2]);
     close(connect_fd);  
     }  
     close(socket_fd);  
