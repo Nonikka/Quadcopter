@@ -11,8 +11,9 @@ int main(int argc, char** argv)
 {  
     int    socket_fd, connect_fd;  
     struct sockaddr_in     servaddr;  
-    char    buff[4096];  
+    char    buff[4096],axis1[4];  
     int     n;  
+    int _axis[6];
     //初始化Socket  
     if( (socket_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1 ){  
     printf("create socket error: %s(errno: %d)\n",strerror(errno),errno);  
@@ -51,7 +52,20 @@ int main(int argc, char** argv)
         exit(0);  
     }  
     buff[n] = '\0';  
-    printf("recv msg from client: %s\n", buff);  
+    axis1[0] = buff[6];
+    axis1[1] = buff[7];
+    axis1[2] = buff[8];
+    axis1[3] = buff[9];
+    _axis[0] =  atoi(axis1);
+    
+    /*
+    _axis[1] =  atoi(buff[10])*100 + atoi(buff[11])*10 + atoi(buff[12])*1;
+    _axis[2] =  atoi(buff[14])*100 + atoi(buff[15])*10 + atoi(buff[16])*1;
+    _axis[3] =  atoi(buff[18])*100 + atoi(buff[19])*10 + atoi(buff[20])*1;
+    _axis[4] =  atoi(buff[22])*100 + atoi(buff[23])*10 + atoi(buff[24])*1;
+    _axis[5] =  atoi(buff[26])*100 + atoi(buff[27])*10 + atoi(buff[28])*1;
+    printf("recv msg from client: %d %d %d %d %d %d\n",_axis[0],_axis[1],_axis[2],_axis[3],_axis[4],_axis[5]);*/
+    printf("recv msg from client: %s %d \n",buff,_axis[0]);
     close(connect_fd);  
     }  
     close(socket_fd);  

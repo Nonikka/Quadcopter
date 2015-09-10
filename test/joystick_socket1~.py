@@ -112,7 +112,7 @@ while done==False:
             fly_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             fly_sock.connect((QUAD_IP, QUAD_PORT))
             #fly_sock.send("axis: " + str("%03d %03d %03d %03d %03d %03d" %(_axis[0],_axis[1],_axis[2],_axis[3],_axis[4],_axis[5])))
-            fly_sock.send("axis: " + str("%04d" %-_axis[1]))
+            fly_sock.send("axis: " + str("%04d" %_axis[0]))
         except:
             print("sock connect failed")
             
@@ -151,16 +151,3 @@ while done==False:
 # If you forget this line, the program will 'hang'
 # on exit if running from IDLE.
 #pygame.quit ()
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -11,15 +11,10 @@
 #include <math.h>
 #include <wiringPiI2C.h>
 #include <stdint.h>
-#include<sys/types.h>
-#include<sys/socket.h>
-#include<netinet/in.h>
 #include "I2Cdev.h"
 #include "MPU6050_6Axis_MotionApps20.h"
 #include "pca9685.h"
 
-#define DEFAULT_PORT 8099 
-#define MAXLINE 4096  
 #define PIN_BASE 300
 #define HERTZ 500
 #define PinNumber1 0  
@@ -51,7 +46,7 @@ float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gra
 uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' };
 
 float Acceleration[3],AngleSpeed[3],Angle[3],Roll,Pitch,Yaw,DutyCycle[4],Accelerator,Pid_Pitch=0,Pid_Roll=0,Pid_Yaw=0,Default_Acc = 0.03,pid_in,pid_error,Roll_PError,Pitch_PError,Yaw_PError,pregyro,Inital_Yaw[7],Inital_Roll[7],Inital_Pitch[7];
-int All_Count=0,START_FLAG=0,Inital=0,PID_ENABLE=0,_axis[6];
+int All_Count=0,START_FLAG=0,Inital=0,PID_ENABLE=0;
 
 void PWMOut(int pin, float pwm);
 
@@ -285,11 +280,6 @@ void* gyro_acc(void*)
             Pid_Pitch = Pid_Calc(Pitch_Suit,Angle[1],-0.7 ,-0.13);
             Pid_Yaw = Pid_Calc(Yaw_Suit,Angle[2],0,-2);
             All_Count = All_Count + 1;
-            Default_Acc = Default_Acc + _axis[0] * 0.0001 * 0.04;
-            if (Default_Acc >= 0.25)
-            {
-                Default_Acc = 0.25;
-            }
             DutyCycle[0] = Default_Acc  - Pid_Roll - Pid_Pitch; //- Pid_Yaw;
             DutyCycle[1] = Default_Acc  - Pid_Roll + Pid_Pitch; //+ Pid_Yaw;
             //DutyCycle[0] = Default_Acc;
@@ -306,62 +296,6 @@ void* gyro_acc(void*)
             
         }
     }
-}
-
-void* socket_joystick(void*)
-{
-    int    socket_fd, connect_fd;  
-    struct sockaddr_in     servaddr;  
-    char    buff[4096],axis1[4];  
-    int     n;  
-    //初始化Socket  
-    if( (socket_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1 ){  
-    printf("create socket error: %s(errno: %d)\n",strerror(errno),errno);  
-    exit(0);  
-    }  
-    //初始化  
-    memset(&servaddr, 0, sizeof(servaddr));  
-    servaddr.sin_family = AF_INET;  
-    servaddr.sin_addr.s_addr = htonl(INADDR_ANY);//IP地址设置成INADDR_ANY,让系统自动获取本机的IP地址。  
-    servaddr.sin_port = htons(DEFAULT_PORT);//设置的端口为DEFAULT_PORT  
-  
-    //将本地地址绑定到所创建的套接字上  
-    if( bind(socket_fd, (struct sockaddr*)&servaddr, sizeof(servaddr)) == -1){  
-    printf("bind socket error: %s(errno: %d)\n",strerror(errno),errno);  
-    exit(0);  
-    }  
-    //开始监听是否有客户端连接  
-    if( listen(socket_fd, 10) == -1){  
-    printf("listen socket error: %s(errno: %d)\n",strerror(errno),errno);  
-    exit(0);  
-    }  
-    printf("======waiting for client's request======\n");  
-    while(1){  
-//阻塞直到有客户端连接
-        if( (connect_fd = accept(socket_fd, (struct sockaddr*)NULL, NULL)) == -1){  
-        printf("accept socket error: %s(errno: %d)",strerror(errno),errno);  
-        continue;  
-    }  
-//接受客户端传过来的数据  
-    n = recv(connect_fd, buff, MAXLINE, 0);  
-//向客户端发送回应数据  
-    if(!fork()){ /*子进程*/  
-        if(send(connect_fd, "connected!\n", 26,0) == -1)  
-        perror("send error");  
-        close(connect_fd);  
-        exit(0);  
-    }  
-    buff[n] = '\0';
-    axis1[0] = buff[6];
-    axis1[1] = buff[7];
-    axis1[2] = buff[8];
-    axis1[3] = buff[9];
-    _axis[0] =  atoi(axis1);
-    
-    printf("\n\nrecv msg from client: %s %d \n\n",buff,_axis[0]);
-    close(connect_fd);  
-    }  
-    close(socket_fd);  
 }
 
 void* KeyBoard(void*)
@@ -422,7 +356,7 @@ void PWMOut(int pin, float pwm)//pwm valaue:0~1
 
 int main()
 {
-    pthread_t mpu6050,transport,joystick;
+    pthread_t mpu6050,transport;
     int ret;
     unsigned int TimeNow,TimeStart;
     Pid_Inital();
@@ -498,12 +432,6 @@ int main()
     if(ret!=0)
     {
         printf ("Create KeyBoard thread error!\n");
-        exit (1);
-    }
-    ret = pthread_create(&joystick,NULL,socket_joystick,NULL);
-    if(ret!=0)
-    {
-        printf ("Create joystick thread error!\n");
         exit (1);
     }
     while(1)  
