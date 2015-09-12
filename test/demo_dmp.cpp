@@ -24,7 +24,7 @@
 #define HERTZ 500
 #define PinNumber1 0  
 #define PinNumber2 1  
-#define PinNumber3 2  
+#define PinNumber3 8  //放里面省的被浆卷到
 #define PinNumber4 3  
 #define IMU_UPDATE_DT 0.01
 #define MAX_ACC 0.59
@@ -50,8 +50,8 @@ float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gra
 // packet structure for InvenSense teapot demo
 uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' };
 
-float Acceleration[3],AngleSpeed[3],Angle[3],Roll,Pitch,Yaw,DutyCycle[4],Accelerator,Pid_Pitch=0,Pid_Roll=0,Pid_Yaw=0,Default_Acc = 0.03,pid_in,pid_error,Roll_PError,Pitch_PError,Yaw_PError,pregyro,Inital_Yaw[7],Inital_Roll[7],Inital_Pitch[7];
-int All_Count=0,START_FLAG=0,Inital=0,PID_ENABLE=0,_axis[6];
+float Default_Acc = 0.03,Pid_Pitch=0,Pid_Roll=0,Pid_Yaw=0,Accelerator,Roll,Pitch,Yaw,pid_in,pid_error,Roll_PError,Pitch_PError,Yaw_PError,pregyro,Acceleration[3],AngleSpeed[3],Angle[3],DutyCycle[4],Inital_Yaw[7],Inital_Roll[7],Inital_Pitch[7];
+int All_Count=0,START_FLAG=0,Inital=0,PID_ENABLE=0,_axis[6];//遥控器传来的轴
 unsigned int TimeNow,TimeStart,TimeLastGet;
 void PWMOut(int pin, float pwm);
 
@@ -78,9 +78,9 @@ PID Yaw_Suit;
 
 void Pid_Inital()
 {
-    Roll_Suit.kp = 0.0068;
+    Roll_Suit.kp = 0.0064;//0.0068有点大
     Roll_Suit.ki = 0.000;
-    Roll_Suit.kd = 0.0018;
+    Roll_Suit.kd = 0.00175;
     Roll_Suit.pregyro =0;
     //Roll_Suit.desired = 1;
     Roll_Suit.integ=0;
@@ -89,9 +89,9 @@ void Pid_Inital()
     Roll_Suit.output = 0.00;
     Roll_Suit.lastoutput=0;
     
-    Pitch_Suit.kp = 0.0068;
+    Pitch_Suit.kp = 0.0064;
     Pitch_Suit.ki = 0.000;
-    Pitch_Suit.kd = 0.0018;
+    Pitch_Suit.kd = 0.00175;
     Pitch_Suit.pregyro =0;
     //Pitch_Suit.desired = -0.7;
     Pitch_Suit.integ=0;
@@ -253,12 +253,12 @@ void* gyro_acc(void*)
             mpu.dmpGetGravity(&gravity, &q);
             mpu.dmpGetLinearAccelInWorld(&aaWorld, &aaReal, &q);
             //printf("aworld %6d %6d %6d    ", aaWorld.x, aaWorld.y, aaWorld.z);
-            //AngleSpeed[0] =  aaWorld.x;
+            //AngleSpeed[0] =  aaWorld.x;//获取加速度 失败
             //AngleSpeed[1] =  aaWorld.y;
             //AngleSpeed[2] =  aaWorld.z;
             */
             /****************************读取完毕*********************************/
-            /*
+            /*//前几秒进行校正
             if (Inital <= 600)
             {
                 Inital ++;
@@ -281,17 +281,19 @@ void* gyro_acc(void*)
                 }
             }*/
              
-            Pid_Roll = Pid_Calc(Roll_Suit,Angle[0],0.8 + 6.6 * _axis[1] * 0.01,0.38);
-            Pid_Pitch = Pid_Calc(Pitch_Suit,Angle[1],-0.6 + 6.6 * _axis[2] * 0.01,-0.13);
+            Pid_Roll = Pid_Calc(Roll_Suit,Angle[0],0.45 - 6 * _axis[1] * 0.01,0.38);
+            Pid_Pitch = Pid_Calc(Pitch_Suit,Angle[1],-0.5 - 6 * _axis[2] * 0.01,-0.13);
             Pid_Yaw = Pid_Calc(Yaw_Suit,Angle[2],0,Inital_Yaw[1]);
             All_Count = All_Count + 1;
-            Default_Acc = Default_Acc + _axis[0] * 0.0001 * 0.04;
+            Default_Acc = Default_Acc + _axis[0] * 0.0001 * 0.05;//0.04太小
             TimeNow = millis();
             if (abs(TimeNow - TimeLastGet) > 800)
             {
                 if(Default_Acc > 0.4)
                 {
-                    Default_Acc = 0.44;
+                    Default_Acc = 0.46;
+                    _axis[1] = 0;
+                    _axis[2] = 0;//前后左右置零
                 }
                 else
                 {
