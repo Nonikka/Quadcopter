@@ -80,7 +80,7 @@ void Pid_Inital()
 {
     Roll_Suit.kp = 0.0064;//0.0068有点大
     Roll_Suit.ki = 0.000;
-    Roll_Suit.kd = 0.00175;
+    Roll_Suit.kd = 0.00175;//跟着0.0018改
     Roll_Suit.pregyro =0;
     //Roll_Suit.desired = 1;
     Roll_Suit.integ=0;
@@ -281,11 +281,11 @@ void* gyro_acc(void*)
                 }
             }*/
              
-            Pid_Roll = Pid_Calc(Roll_Suit,Angle[0],0.45 - 6 * _axis[1] * 0.01,0.38);
-            Pid_Pitch = Pid_Calc(Pitch_Suit,Angle[1],-0.5 - 6 * _axis[2] * 0.01,-0.13);
+            Pid_Roll = Pid_Calc(Roll_Suit,Angle[0],0.68 - 6 * _axis[1] * 0.01,0.38);
+            Pid_Pitch = Pid_Calc(Pitch_Suit,Angle[1],-0.55 - 6 * _axis[2] * 0.01,-0.13);
             Pid_Yaw = Pid_Calc(Yaw_Suit,Angle[2],0,Inital_Yaw[1]);
             All_Count = All_Count + 1;
-            Default_Acc = Default_Acc + _axis[0] * 0.0001 * 0.05;//0.04太小
+            Default_Acc = Default_Acc + _axis[0] * 0.0001 * 0.052;//0.04太小
             TimeNow = millis();
             if (abs(TimeNow - TimeLastGet) > 800)
             {
