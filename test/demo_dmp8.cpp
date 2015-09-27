@@ -78,9 +78,9 @@ PID Yaw_Suit;
 
 void Pid_Inital()
 {
-    Roll_Suit.kp = 0.0062;//0.0068有点大 0.064有点大
+    Roll_Suit.kp = 0.0064;//0.0068有点大
     Roll_Suit.ki = 0.000;
-    Roll_Suit.kd = 0.00172;//跟着0.0018改
+    Roll_Suit.kd = 0.00175;//跟着0.0018改
     Roll_Suit.pregyro =0;
     //Roll_Suit.desired = 1;
     Roll_Suit.integ=0;
@@ -89,9 +89,9 @@ void Pid_Inital()
     Roll_Suit.output = 0.00;
     Roll_Suit.lastoutput=0;
     
-    Pitch_Suit.kp = 0.0062;
+    Pitch_Suit.kp = 0.0064;
     Pitch_Suit.ki = 0.000;
-    Pitch_Suit.kd = 0.00172;
+    Pitch_Suit.kd = 0.00175;
     Pitch_Suit.pregyro =0;
     //Pitch_Suit.desired = -0.7;
     Pitch_Suit.integ=0;
@@ -247,7 +247,40 @@ void* gyro_acc(void*)
             
             // display initial world-frame acceleration, adjusted to remove gravity
             // and rotated based on known orientation from quaternion
-            
+            /*
+            mpu.dmpGetQuaternion(&q, fifoBuffer);
+            mpu.dmpGetAccel(&aa, fifoBuffer);
+            mpu.dmpGetGravity(&gravity, &q);
+            mpu.dmpGetLinearAccelInWorld(&aaWorld, &aaReal, &q);
+            //printf("aworld %6d %6d %6d    ", aaWorld.x, aaWorld.y, aaWorld.z);
+            //AngleSpeed[0] =  aaWorld.x;//获取加速度 失败
+            //AngleSpeed[1] =  aaWorld.y;
+            //AngleSpeed[2] =  aaWorld.z;
+            */
+            /****************************读取完毕*********************************/
+            /*//前几秒进行校正
+            if (Inital <= 600)
+            {
+                Inital ++;
+                if (Inital % 98 == 1)
+                {
+                Inital_Roll[i] = Angle[0];
+                Inital_Pitch[i] = Angle[1];
+                Inital_Yaw[i] = Angle[2];
+                printf("\nRoll:%.2f Pitch:%.2f Yaw:%.2f",Inital_Roll[i],Inital_Pitch[i],Inital_Yaw[i]);
+                i++;
+                printf("\t%d\n",Inital);
+                fflush(stdout);
+                if (i == 6)
+                {
+                    Inital_Yaw[6] = (Inital_Yaw[3] + Inital_Yaw[4] + Inital_Yaw[5]) / 3;
+                    Inital_Roll[6] =(Inital_Roll[3] + Inital_Roll[4] + Inital_Roll[5]) / 3;
+                    Inital_Pitch[6] = (Inital_Pitch[3] + Inital_Pitch[4] + Inital_Pitch[5]) / 3;
+                    printf("\n\nInital: Roll:%.2f Pitch:%.2f Yaw:%.2f\n\n\n",Inital_Roll[i],Inital_Pitch[i],Inital_Yaw[i]);
+                }
+                }
+            }*/
+             
             Pid_Roll = Pid_Calc(Roll_Suit,Angle[0],0.68 - 6 * _axis[1] * 0.01,0.38);
             Pid_Pitch = Pid_Calc(Pitch_Suit,Angle[1],-0.55 - 6 * _axis[2] * 0.01,-0.13);
             Pid_Yaw = Pid_Calc(Yaw_Suit,Angle[2],0,Inital_Yaw[1]);
@@ -290,70 +323,6 @@ void* gyro_acc(void*)
     }
 }
 
-//1油门 2前后 3左右 4旋转 5预留 6预留 每个三位
-viod* serial_DL22(void*)
-{
-    int fd,i;
-    int Num_Avail;
-    unsigned char Re_buf[18],counter;
-    unsigned char ucStr[18]
-    if ((fd = serialOpen ("/dev/ttyAMA0", 115200)) < 0)
-    {
-        fprintf (stderr, "Unable to open serial device: %s\n", strerror (errno)) ;
-        return  ;
-    }
-    delay(50);
-    for(;;)
-    {
-        Re_buf[counter]=serialGetchar(fd);
-        if(Re_buf[0]!=0x55) 
-        {
-            memset(Re_buf, 0, 18*sizeof(char));
-            counter = 0;
-        }
-        else
-        {
-            counter++;
-            if(counter==18)             //接收到11个数据
-            {    
-                counter=0;               //重新赋值，准备下一帧数据的接收        
-                
-                ucStr[0]=Re_buf[0];
-                ucStr[1]=Re_buf[1];
-                ucStr[2]=Re_buf[2];
-                ucStr[3]=Re_buf[3];
-                ucStr[4]=Re_buf[4];
-                ucStr[5]=Re_buf[5];
-                ucStr[6]=Re_buf[6];
-                ucStr[7]=Re_buf[7];
-                ucStr[8]=Re_buf[8];
-                ucStr[9]=Re_buf[9];
-                ucStr[10]=Re_buf[10];
-                ucStr[11]=Re_buf[11];
-                ucStr[12]=Re_buf[12];
-                ucStr[13]=Re_buf[13];
-                ucStr[14]=Re_buf[14];
-                ucStr[15]=Re_buf[15];
-                ucStr[16]=Re_buf[16];
-                ucStr[17]=Re_buf[17];
-
-                Num_Avail = serialDataAvail (fd);
-                //printf("Num_Avail; %d",Num_Avail);
-                
-                
-                
-                
-                
-                
-                
-                all_count++;
-                }
-            }
-        }
-    }
-}
-
-/*
 void* socket_joystick(void*)
 {
     int    socket_fd, connect_fd;  
@@ -391,7 +360,7 @@ void* socket_joystick(void*)
 //接受客户端传过来的数据  
     n = recv(connect_fd, buff, MAXLINE, 0);  
 //向客户端发送回应数据  
-    if(!fork()){   
+    if(!fork()){ /*子进程*/  
         if(send(connect_fd, "connected!\n", 26,0) == -1)  
         perror("send error");  
         close(connect_fd);  
@@ -425,7 +394,7 @@ void* socket_joystick(void*)
     }  
     close(socket_fd);  
 }
-*/
+
 void* KeyBoard(void*)
 {
     char keychar;
