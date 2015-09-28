@@ -4,16 +4,21 @@
 #include <signal.h>
 #include <string.h>
 
-float Filter[10];
+
 
 float average_filter(float filter_input )
 {
     int i;
     float filter_output;
-    Filter[i] = filter_input;
+    float Filter[10];
+    Filter[9] = filter_input;
     
-    filter_output = 0.66 * filter_input + 0.12 * Filter[i-1] + 0.1 * Filter[i-2] + 0.06 * Filter[i-3] + 0.04 * Filter[i-4]
-    + 0.02 * Filter[i-5];
-    i++;
+    filter_output = 0.66 * Filter[8] + 0.12 * Filter[6] + 0.1 * Filter[4] + 0.06 * Filter[2] + 0.04 * Filter[0];
+    
+    for(i=9;i>0;i--)
+    {
+        Filter[i-1]=Fileter[i];
+    }
+    
     return filter_output;
 }

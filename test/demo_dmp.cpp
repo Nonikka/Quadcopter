@@ -11,9 +11,9 @@
 #include <math.h>
 #include <wiringPiI2C.h>
 #include <stdint.h>
-#include<sys/types.h>
-#include<sys/socket.h>
-#include<netinet/in.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 #include "I2Cdev.h"
 #include "MPU6050_6Axis_MotionApps20.h"
 #include "pca9685.h"
@@ -50,8 +50,8 @@ float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gra
 // packet structure for InvenSense teapot demo
 uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' };
 
-float Default_Acc = 0.03,Pid_Pitch=0,Pid_Roll=0,Pid_Yaw=0,Accelerator,Roll,Pitch,Yaw,pid_in,pid_error,Roll_PError,Pitch_PError,Yaw_PError,pregyro,Acceleration[3],AngleSpeed[3],Angle[3],DutyCycle[4],Inital_Yaw[7],Inital_Roll[7],Inital_Pitch[7];
-int All_Count=0,START_FLAG=0,Inital=0,PID_ENABLE=0,_axis[6];//遥控器传来的轴
+float Default_Acc = 0.03,Pid_Pitch=0,Pid_Roll=0,Pid_Yaw=0,Accelerator,Roll,Pitch,Yaw,pid_in,pid_error,Roll_PError,Pitch_PError,Yaw_PError,pregyro,Acceleration[3],AngleSpeed[3],Angle[3],DutyCycle[4],Inital_Yaw[7],Inital_Roll[7],Inital_Pitch[7],Filter[10];
+int All_Count=0,START_FLAG=0,Inital=0,PID_ENABLE=0,_axis[6],filter_count;//遥控器传来的轴
 unsigned int TimeNow,TimeStart,TimeLastGet;
 void PWMOut(int pin, float pwm);
 
@@ -163,6 +163,21 @@ float Pid_Calc(PID &pidsuite,float measured,float desired,float Inital_Error)
     return pidsuite.output;
 }
 
+float average_filter(float filter_input )
+{
+    float filter_output;
+    Filter[9] = filter_input;
+    
+    filter_output = 0.66 * Filter[8] + 0.12 * Filter[6] + 0.1 * Filter[4] + 0.06 * Filter[2] + 0.04 * Filter[0];
+    
+    for(filter_count=9;filter_count>0;filter_count--)
+    {
+        Filter[filter_count-1]=Filter[filter_count];
+    }
+    
+    return filter_output;
+}
+
 void* gyro_acc(void*)
 {
     //int i = 0;
@@ -242,8 +257,8 @@ void* gyro_acc(void*)
             mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
             //printf("ypr  %7.2f %7.2f %7.2f  ", ypr[0] * 180/M_PI, ypr[1] * 180/M_PI, ypr[2] * 180/M_PI);
             Angle[2] = ypr[0] * 180/M_PI;
-            Angle[1] = ypr[1] * 180/M_PI;//此为Pitch
-            Angle[0] = ypr[2] * 180/M_PI;//此为Roll
+            Angle[1] = average_filter(ypr[1] * 180/M_PI);//此为Pitch
+            Angle[0] = average_filter(ypr[2] * 180/M_PI);//此为Roll
             
             // display initial world-frame acceleration, adjusted to remove gravity
             // and rotated based on known orientation from quaternion
@@ -291,141 +306,83 @@ void* gyro_acc(void*)
 }
 
 //1油门 2前后 3左右 4旋转 5预留 6预留 每个三位
-viod* serial_DL22(void*)
+void* serial_DL22(void*)
 {
-    int fd,i;
-    int Num_Avail;
-    unsigned char Re_buf[18],counter;
-    unsigned char ucStr[18]
+    int fd,counter=0;
+    //int Num_Avail;
+    unsigned char Re_buf[19];
+    unsigned char ucStr[18];
+    char axis1[5],axis2[5],axis3[5],axis4[5];
     if ((fd = serialOpen ("/dev/ttyAMA0", 115200)) < 0)
     {
-        fprintf (stderr, "Unable to open serial device: %s\n", strerror (errno)) ;
-        return  ;
+    fprintf (stderr, "Unable to open serial device: %s\n", strerror (errno)) ;
+    return 0 ;
     }
-    delay(50);
-    for(;;)
+
+    for (;;)
     {
         Re_buf[counter]=serialGetchar(fd);
-        if(Re_buf[0]!=0x55) 
+        if(Re_buf[0]!=0x55) // 0x55 = U
         {
             memset(Re_buf, 0, 18*sizeof(char));
             counter = 0;
+            
         }
         else
         {
             counter++;
             if(counter==18)             //接收到11个数据
             {    
-                counter=0;               //重新赋值，准备下一帧数据的接收        
-                
-                ucStr[0]=Re_buf[0];
-                ucStr[1]=Re_buf[1];
-                ucStr[2]=Re_buf[2];
-                ucStr[3]=Re_buf[3];
-                ucStr[4]=Re_buf[4];
-                ucStr[5]=Re_buf[5];
-                ucStr[6]=Re_buf[6];
-                ucStr[7]=Re_buf[7];
-                ucStr[8]=Re_buf[8];
-                ucStr[9]=Re_buf[9];
-                ucStr[10]=Re_buf[10];
-                ucStr[11]=Re_buf[11];
-                ucStr[12]=Re_buf[12];
-                ucStr[13]=Re_buf[13];
-                ucStr[14]=Re_buf[14];
-                ucStr[15]=Re_buf[15];
-                ucStr[16]=Re_buf[16];
-                ucStr[17]=Re_buf[17];
-
-                Num_Avail = serialDataAvail (fd);
-                //printf("Num_Avail; %d",Num_Avail);
-                
-                
-                
-                
-                
-                
-                
-                all_count++;
-                }
+            counter=0;               //重新赋值，准备下一帧数据的接收        
+            TimeLastGet = millis();
+            ucStr[0]=Re_buf[1];
+            ucStr[1]=Re_buf[2];
+            ucStr[2]=Re_buf[3];
+            ucStr[3]=Re_buf[4];
+            ucStr[4]=Re_buf[5];
+            ucStr[5]=Re_buf[6];
+            ucStr[6]=Re_buf[7];
+            ucStr[7]=Re_buf[8];
+            ucStr[8]=Re_buf[9];
+            ucStr[9]=Re_buf[10];
+            ucStr[10]=Re_buf[11];
+            ucStr[11]=Re_buf[12];
+            ucStr[12]=Re_buf[13];
+            ucStr[13]=Re_buf[14];
+            ucStr[14]=Re_buf[15];
+            ucStr[15]=Re_buf[16];
+            ucStr[16]=Re_buf[17];
+            ucStr[17]=Re_buf[18];
+            
+            axis1[0] = Re_buf[1];
+            axis1[1] = Re_buf[2];
+            axis1[2] = Re_buf[3];
+            axis1[3] = Re_buf[4];
+            axis1[4] = '\0';
+            _axis[0] =  atoi(axis1);//油门控制
+            
+            axis2[0] = Re_buf[5];
+            axis2[1] = Re_buf[6];
+            axis2[2] = Re_buf[7];
+            axis2[3] = Re_buf[8];
+            axis2[4] = '\0';
+            _axis[1] =  atoi(axis2);//前后控制 roll
+            
+            axis3[0] = Re_buf[9];
+            axis3[1] = Re_buf[10];
+            axis3[2] = Re_buf[11];
+            axis3[3] = Re_buf[12];
+            axis3[4] = '\0';//不加会导致转换错误
+            _axis[2] =  atoi(axis3);//左右控制 pitch
+    
+            printf("recv from client: %s %d %d %d\n\n",ucStr,_axis[0],_axis[1],_axis[2]);
+            memset(Re_buf, 0, 18*sizeof(char));
             }
         }
     }
 }
 
-/*
-void* socket_joystick(void*)
-{
-    int    socket_fd, connect_fd;  
-    struct sockaddr_in     servaddr;  
-    char    buff[4096],axis1[5],axis2[5],axis3[5],axis4[5];  
-    int     n;  
-    //初始化Socket  
-    if( (socket_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1 ){  
-    printf("create socket error: %s(errno: %d)\n",strerror(errno),errno);  
-    exit(0);  
-    }  
-    //初始化  
-    memset(&servaddr, 0, sizeof(servaddr));  
-    servaddr.sin_family = AF_INET;  
-    servaddr.sin_addr.s_addr = htonl(INADDR_ANY);//IP地址设置成INADDR_ANY,让系统自动获取本机的IP地址。  
-    servaddr.sin_port = htons(DEFAULT_PORT);//设置的端口为DEFAULT_PORT  
-  
-    //将本地地址绑定到所创建的套接字上  
-    if( bind(socket_fd, (struct sockaddr*)&servaddr, sizeof(servaddr)) == -1){  
-    printf("bind socket error: %s(errno: %d)\n",strerror(errno),errno);  
-    exit(0);  
-    }  
-    //开始监听是否有客户端连接  
-    if( listen(socket_fd, 10) == -1){  
-    printf("listen socket error: %s(errno: %d)\n",strerror(errno),errno);  
-    exit(0);  
-    }  
-    printf("======waiting for client's request======\n");  
-    while(1){  
-//阻塞直到有客户端连接
-        if( (connect_fd = accept(socket_fd, (struct sockaddr*)NULL, NULL)) == -1){  
-        printf("accept socket error: %s(errno: %d)",strerror(errno),errno);  
-        continue;  
-    }  
-//接受客户端传过来的数据  
-    n = recv(connect_fd, buff, MAXLINE, 0);  
-//向客户端发送回应数据  
-    if(!fork()){   
-        if(send(connect_fd, "connected!\n", 26,0) == -1)  
-        perror("send error");  
-        close(connect_fd);  
-        exit(0);  
-    }  
-    buff[n] = '\0';
-    axis1[0] = buff[6];
-    axis1[1] = buff[7];
-    axis1[2] = buff[8];
-    axis1[3] = buff[9];
-    axis1[4] = '\0';
-    _axis[0] =  atoi(axis1);//油门控制
-    
-    axis2[0] = buff[11];
-    axis2[1] = buff[12];
-    axis2[2] = buff[13];
-    axis2[3] = buff[14];
-    axis2[4] = '\0';
-    _axis[1] =  atoi(axis2);//前后控制 roll
-    
-    axis3[0] = buff[16];
-    axis3[1] = buff[17];
-    axis3[2] = buff[18];
-    axis3[3] = buff[19];
-    axis3[4] = '\0';//不加会导致转换错误
-    _axis[2] =  atoi(axis3);//左右控制 pitch
-    
-    TimeLastGet = millis();
-    printf("\n\nrecv msg from client: %s %d %d %d\n\n",buff,_axis[0],_axis[1],_axis[2]);
-    close(connect_fd);  
-    }  
-    close(socket_fd);  
-}
-*/
+
 void* KeyBoard(void*)
 {
     char keychar;
@@ -559,7 +516,7 @@ int main()
         printf ("Create KeyBoard thread error!\n");
         exit (1);
     }
-    ret = pthread_create(&joystick,NULL,socket_joystick,NULL);//启动socket手柄线程
+    ret = pthread_create(&joystick,NULL,serial_DL22,NULL);//启动serial手柄线程
     if(ret!=0)
     {
         printf ("Create joystick thread error!\n");
