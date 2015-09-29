@@ -50,7 +50,7 @@ float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gra
 // packet structure for InvenSense teapot demo
 uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' };
 
-float Default_Acc = 0.03,Pid_Pitch=0,Pid_Roll=0,Pid_Yaw=0,Accelerator,Roll,Pitch,Yaw,pid_in,pid_error,Roll_PError,Pitch_PError,Yaw_PError,pregyro,Acceleration[3],AngleSpeed[3],Angle[3],DutyCycle[4],Inital_Yaw[7],Inital_Roll[7],Inital_Pitch[7],Filter_Roll[10],Filter_Pitch[10];
+float Default_Acc = 0.03,Pid_Pitch=0,Pid_Roll=0,Pid_Yaw=0,Accelerator,Roll,Pitch,Yaw,pid_in,pid_error,Roll_PError,Pitch_PError,Yaw_PError,pregyro,Acceleration[3],AngleSpeed[3],Angle[3],DutyCycle[4],Inital_Yaw[7],Inital_Roll[7],Inital_Pitch[7],Filter[10];
 int All_Count=0,START_FLAG=0,Inital=0,PID_ENABLE=0,_axis[6],filter_count;//遥控器传来的轴
 unsigned int TimeNow,TimeStart,TimeLastGet;
 void PWMOut(int pin, float pwm);
@@ -78,9 +78,9 @@ PID Yaw_Suit;
 
 void Pid_Inital()
 {
-    Roll_Suit.kp = 0.0056;//0.0068有点大 0.064有点大
+    Roll_Suit.kp = 0.0062;//0.0068有点大 0.064有点大
     Roll_Suit.ki = 0.000;
-    Roll_Suit.kd = 0.00175;//跟着0.0018改
+    Roll_Suit.kd = 0.00172;//跟着0.0018改
     Roll_Suit.pregyro =0;
     //Roll_Suit.desired = 1;
     Roll_Suit.integ=0;
@@ -89,9 +89,9 @@ void Pid_Inital()
     Roll_Suit.output = 0.00;
     Roll_Suit.lastoutput=0;
     
-    Pitch_Suit.kp = 0.0056;
+    Pitch_Suit.kp = 0.0062;
     Pitch_Suit.ki = 0.000;
-    Pitch_Suit.kd = 0.00175;
+    Pitch_Suit.kd = 0.00172;
     Pitch_Suit.pregyro =0;
     //Pitch_Suit.desired = -0.7;
     Pitch_Suit.integ=0;
@@ -163,12 +163,12 @@ float Pid_Calc(PID &pidsuite,float measured,float desired,float Inital_Error)
     return pidsuite.output;
 }
 
-float average_filter(float filter_input ,float (&Filter)[10])
+float average_filter(float filter_input )
 {
     float filter_output;
     Filter[9] = filter_input;
     
-    filter_output = 0.65 * Filter[8] + 0.14 * Filter[6] + 0.11 * Filter[4] + 0.06 * Filter[2] + 0.04 * Filter[0];
+    filter_output = 0.66 * Filter[8] + 0.12 * Filter[6] + 0.1 * Filter[4] + 0.06 * Filter[2] + 0.04 * Filter[0];
     
     for(filter_count=9;filter_count>0;filter_count--)
     {
@@ -257,14 +257,14 @@ void* gyro_acc(void*)
             mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
             //printf("ypr  %7.2f %7.2f %7.2f  ", ypr[0] * 180/M_PI, ypr[1] * 180/M_PI, ypr[2] * 180/M_PI);
             Angle[2] = ypr[0] * 180/M_PI;
-            Angle[1] = average_filter(ypr[1] * 180/M_PI,Filter_Pitch);//此为Pitch
-            Angle[0] = average_filter(ypr[2] * 180/M_PI,Filter_Roll);//此为Roll
+            Angle[1] = average_filter(ypr[1] * 180/M_PI);//此为Pitch
+            Angle[0] = average_filter(ypr[2] * 180/M_PI);//此为Roll
             
             // display initial world-frame acceleration, adjusted to remove gravity
             // and rotated based on known orientation from quaternion
             
-            Pid_Roll = Pid_Calc(Roll_Suit,Angle[0],0.68 - 11 * _axis[1] * 0.01,0.38);
-            Pid_Pitch = Pid_Calc(Pitch_Suit,Angle[1],-0.55 - 11 * _axis[2] * 0.01,-0.13);
+            Pid_Roll = Pid_Calc(Roll_Suit,Angle[0],0.68 - 6 * _axis[1] * 0.01,0.38);
+            Pid_Pitch = Pid_Calc(Pitch_Suit,Angle[1],-0.55 - 6 * _axis[2] * 0.01,-0.13);
             Pid_Yaw = Pid_Calc(Yaw_Suit,Angle[2],0,Inital_Yaw[1]);
             All_Count = All_Count + 1;
             Default_Acc = Default_Acc + _axis[0] * 0.0001 * 0.052;//0.04太小
@@ -383,6 +383,55 @@ void* serial_DL22(void*)
 }
 
 
+void* KeyBoard(void*)
+{
+    char keychar;
+    while(1)
+    {
+        keychar = getchar();
+        if (keychar == 'q')
+        {
+            Default_Acc += 0.01;
+            if (Default_Acc > MAX_ACC) 
+            {
+                Default_Acc = MAX_ACC;
+            }
+        }
+        else if (keychar == 'a')
+        {
+            Default_Acc -= 0.01;
+            if (Default_Acc < 0.02)
+            {
+                Default_Acc = 0.02;
+            }
+        }
+        else if (keychar == 'e')
+        {
+            Default_Acc = 0.05;
+            delay(200);
+            Default_Acc = 0.03;
+            delay(200);
+            PID_ENABLE = 0;
+        }
+        else if (keychar == 'r')
+        {
+            Default_Acc = 0.05;
+            delay(200);
+            Default_Acc = 0.03;
+            delay(200);
+            PWMOut(PinNumber1,0.03);
+            PWMOut(PinNumber2,0.03);
+            PWMOut(PinNumber3,0.03);
+            PWMOut(PinNumber4,0.03);
+            return 0;
+        }
+        else if (keychar == 'w')
+        {
+            Default_Acc = 0.5;
+        }
+    }
+}
+
 void PWMOut(int pin, float pwm)//pwm valaue:0~1
 {
     int outpwm = pwm * 2048 + 2048;
@@ -392,7 +441,7 @@ void PWMOut(int pin, float pwm)//pwm valaue:0~1
 
 int main()
 {
-    pthread_t mpu6050,joystick;//transport
+    pthread_t mpu6050,transport,joystick;
     int ret;
     Pid_Inital();
     PID_ENABLE = 1;
@@ -451,8 +500,7 @@ int main()
     PWMOut(PinNumber4,0);
     printf("input to start!\n");
     fflush(stdout);
-    delay(1000);
-    //getchar();
+    getchar();
     
     START_FLAG = 1;
     PWMOut(PinNumber1,0.06);
@@ -462,13 +510,12 @@ int main()
     delay(500);
     TimeStart = millis();
     /*********************/
-    /*
     ret = pthread_create(&transport,NULL,KeyBoard,NULL);
     if(ret!=0)
     {
         printf ("Create KeyBoard thread error!\n");
         exit (1);
-    }*/
+    }
     ret = pthread_create(&joystick,NULL,serial_DL22,NULL);//启动serial手柄线程
     if(ret!=0)
     {
