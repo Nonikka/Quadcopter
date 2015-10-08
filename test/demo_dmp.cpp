@@ -51,7 +51,7 @@ float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gra
 uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' };
 
 float Default_Acc = 0.03,Pid_Pitch=0,Pid_Roll=0,Pid_Yaw=0,Accelerator,Roll,Pitch,Yaw,pid_in,pid_error,Roll_PError,Pitch_PError,Yaw_PError,pregyro,Acceleration[3],AngleSpeed[3],Angle[3],DutyCycle[4],Inital_Yaw[7],Inital_Roll[7],Inital_Pitch[7],Filter_Roll[10],Filter_Pitch[10];
-int All_Count=0,START_FLAG=0,Inital=0,PID_ENABLE=0,_axis[6],filter_count;//遥控器传来的轴
+int All_Count=0,START_FLAG=0,Inital=0,PID_ENABLE=0,_axis[6],filter_count,STOP1 = 0,STOP2 = 0;//遥控器传来的轴
 unsigned int TimeNow,TimeStart,TimeLastGet;
 void PWMOut(int pin, float pwm);
 
@@ -78,9 +78,9 @@ PID Yaw_Suit;
 
 void Pid_Inital()
 {
-    Roll_Suit.kp = 0.0056;//0.0068有点大 0.064有点大
-    Roll_Suit.ki = 0.000;
-    Roll_Suit.kd = 0.00175;//跟着0.0018改
+    Roll_Suit.kp = 0.00105;//0.0068有点大 0.064有点大 0.56太大 0.0052太大 //0.0046 0.00285 p太大
+    Roll_Suit.ki = 0.0000;
+    Roll_Suit.kd = 0.00163;//跟着0.0018改 0.175太小 0.0019太小 0.0023太小         //0.00105 0.00165 可以试试
     Roll_Suit.pregyro =0;
     //Roll_Suit.desired = 1;
     Roll_Suit.integ=0;
@@ -89,9 +89,9 @@ void Pid_Inital()
     Roll_Suit.output = 0.00;
     Roll_Suit.lastoutput=0;
     
-    Pitch_Suit.kp = 0.0056;
-    Pitch_Suit.ki = 0.000;
-    Pitch_Suit.kd = 0.00175;
+    Pitch_Suit.kp = 0.00105;
+    Pitch_Suit.ki = 0.0000;
+    Pitch_Suit.kd = 0.00163;
     Pitch_Suit.pregyro =0;
     //Pitch_Suit.desired = -0.7;
     Pitch_Suit.integ=0;
@@ -109,7 +109,7 @@ float Pid_Calc(PID &pidsuite,float measured,float desired,float Inital_Error)
     //pidsuite.preerror = pidsuite.error;//更新前一次偏差
     
     pidsuite.error = desired - measured + Inital_Error ;//偏差：期望-测量值
-    pidsuite.error = pidsuite.error * 0.88 + pidsuite.preerror * 0.12;
+    pidsuite.error = pidsuite.error; //* 0.88 + pidsuite.preerror * 0.12;
     //pid_error = pidsuite.error;//debug用
     
     pidsuite.integ += pidsuite.error * IMU_UPDATE_DT;//偏差积分，IMU_UPDATE_DT也就是每调整漏斗大小的步辐
@@ -127,6 +127,7 @@ float Pid_Calc(PID &pidsuite,float measured,float desired,float Inital_Error)
     pidsuite.preerror = pidsuite.error;//debug用 更新前一次偏差
     
     AngleSpeed[0] = pidsuite.deriv;
+    /*
     if (fabs(pidsuite.deriv) < 20 )
     {
         if (fabs(pidsuite.deriv) < 10 )
@@ -137,18 +138,18 @@ float Pid_Calc(PID &pidsuite,float measured,float desired,float Inital_Error)
         {
             pidsuite.deriv = pidsuite.deriv * 0.9;
         }
-    }
+    }*/
     pidsuite.output = (pidsuite.kp * pidsuite.error) + (pidsuite.ki * pidsuite.integ) + (pidsuite.kd * pidsuite.deriv);
     pid_in = pidsuite.output;
     
     pregyro = pidsuite.pregyro;
-    if (pidsuite.output >  0.12)
+    if (pidsuite.output >  0.15)
     {
-        pidsuite.output = 0.12;
+        pidsuite.output = 0.15;
     }
-    if (pidsuite.output <  -0.12)
+    if (pidsuite.output <  -0.15)
     {
-        pidsuite.output = -0.12;
+        pidsuite.output = -0.15;
     }
     //output = output * 0.9 + lastoutput * 0.1;
     if (fabs(pidsuite.error) < 0.3 )
@@ -268,6 +269,10 @@ void* gyro_acc(void*)
             Pid_Yaw = Pid_Calc(Yaw_Suit,Angle[2],0,Inital_Yaw[1]);
             All_Count = All_Count + 1;
             Default_Acc = Default_Acc + _axis[0] * 0.0001 * 0.052;//0.04太小
+            if (STOP1 != 48 && STOP2 != 48)
+            {
+                Default_Acc = 0.04;
+            }
             TimeNow = millis();
             if (abs(TimeNow - TimeLastGet) > 800)
             {
@@ -352,7 +357,7 @@ void* serial_DL22(void*)
             ucStr[14]=Re_buf[15];
             ucStr[15]=Re_buf[16];
             ucStr[16]=Re_buf[17];
-            ucStr[17]=Re_buf[18];
+            ucStr[17]=Re_buf[18]; //注意在接受中显示只有前17位，最后一位估计是作为了/0
             
             axis1[0] = Re_buf[1];
             axis1[1] = Re_buf[2];
@@ -374,8 +379,10 @@ void* serial_DL22(void*)
             axis3[3] = Re_buf[12];
             axis3[4] = '\0';//不加会导致转换错误
             _axis[2] =  atoi(axis3);//左右控制 pitch
-    
-            printf("recv from client: %s %d %d %d\n\n",ucStr,_axis[0],_axis[1],_axis[2]);
+            STOP1 = Re_buf[13];
+            STOP2 = Re_buf[14];
+            
+            printf("recv from client: %s %d %d %d %d %d \n\n",ucStr,_axis[0],_axis[1],_axis[2],STOP1,STOP2);
             memset(Re_buf, 0, 18*sizeof(char));
             }
         }

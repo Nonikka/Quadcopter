@@ -112,16 +112,17 @@ while done==False:
         #_axis[3] 为上下，_axis[4]为左右
         #_axis[1] 控制油门
         try:
-            n = serial_com3.write("U" + str("%04d" %-_axis[1]) + str("%04d" %-_axis[3]) + str("%04d" %_axis[4])+"111111")
+            n = serial_com3.write("U" + str("%04d" %-_axis[1]) + str("%04d" %-_axis[3]) + str("%04d" %_axis[4])+ str("%01d" %_buttons[4]) + str("%01d" %_buttons[5]) + "1111")
         except:
             print("serial send failed")
             
         buttons = joystick.get_numbuttons()
         textPrint.printt(screen, "Number of buttons: {}".format(buttons) )
         textPrint.indent()
-
+        _buttons = [0,0,0,0,0,0,0,0,0,0]
         for i in range( buttons ):
             button = joystick.get_button( i )
+            _buttons[i] = int(button)
             textPrint.printt(screen, "Button {:>2} value: {}".format(i,button) )
         textPrint.unindent()
             
