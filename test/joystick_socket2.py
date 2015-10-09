@@ -112,14 +112,14 @@ while done==False:
         #_axis[3] 为上下，_axis[4]为左右
         #_axis[1] 控制油门
         try:
-            n = serial_com3.write("U" + str("%04d" %-_axis[1]) + str("%04d" %-_axis[3]) + str("%04d" %_axis[4])+ str("%01d" %_buttons[4]) + str("%01d" %_buttons[5]) + "1111")
+            n = serial_com3.write("U" + str("%04d" %-_axis[1]) + str("%04d" %-_axis[3]) + str("%04d" %_axis[4])+ str("%01d" %_buttons[4]) + str("%01d" %_buttons[5]) + str("%01d" %_buttons[2]) + str("%01d" %_buttons[1]) + "11")
         except:
             print("serial send failed")
             
         buttons = joystick.get_numbuttons()
         textPrint.printt(screen, "Number of buttons: {}".format(buttons) )
         textPrint.indent()
-        _buttons = [0,0,0,0,0,0,0,0,0,0]
+        _buttons = [0,0,0,0,0,0,0,0,0,0]#button2 left(X) button1 right(B) 
         for i in range( buttons ):
             button = joystick.get_button( i )
             _buttons[i] = int(button)
@@ -146,7 +146,7 @@ while done==False:
     pygame.display.flip()
 
     # Limit to 20 frames per second
-    clock.tick(20)
+    clock.tick(15)
     
 # Close the window and quit.
 # If you forget this line, the program will 'hang'

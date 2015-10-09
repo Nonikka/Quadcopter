@@ -51,7 +51,7 @@ float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gra
 uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' };
 
 float Default_Acc = 0.03,Pid_Pitch=0,Pid_Roll=0,Pid_Yaw=0,Accelerator,Roll,Pitch,Yaw,pid_in,pid_error,Roll_PError,Pitch_PError,Yaw_PError,pregyro,Acceleration[3],AngleSpeed[3],Angle[3],DutyCycle[4],Inital_Yaw[7],Inital_Roll[7],Inital_Pitch[7],Filter_Roll[10],Filter_Pitch[10];
-int All_Count=0,START_FLAG=0,Inital=0,PID_ENABLE=0,_axis[6],filter_count,STOP1 = 0,STOP2 = 0,LEFT_ROTATE,RIGHT_ROTATE;//遥控器传来的轴
+int All_Count=0,START_FLAG=0,Inital=0,PID_ENABLE=0,_axis[6],filter_count,STOP1 = 0,STOP2 = 0;//遥控器传来的轴
 unsigned int TimeNow,TimeStart,TimeLastGet;
 void PWMOut(int pin, float pwm);
 
@@ -80,7 +80,7 @@ void Pid_Inital()
 {
     Roll_Suit.kp = 0.00105;//0.0068有点大 0.064有点大 0.56太大 0.0052太大 //0.0046 0.00285 p太大
     Roll_Suit.ki = 0.0000;
-    Roll_Suit.kd = 0.0018;//跟着0.0018改 0.175太小 0.0019太小 0.0023太小         //0.00105 0.00165 可以试试 0.00168可以
+    Roll_Suit.kd = 0.00163;//跟着0.0018改 0.175太小 0.0019太小 0.0023太小         //0.00105 0.00165 可以试试
     Roll_Suit.pregyro =0;
     //Roll_Suit.desired = 1;
     Roll_Suit.integ=0;
@@ -91,7 +91,7 @@ void Pid_Inital()
     
     Pitch_Suit.kp = 0.00105;
     Pitch_Suit.ki = 0.0000;
-    Pitch_Suit.kd = 0.0018;
+    Pitch_Suit.kd = 0.00163;
     Pitch_Suit.pregyro =0;
     //Pitch_Suit.desired = -0.7;
     Pitch_Suit.integ=0;
@@ -296,16 +296,6 @@ void* gyro_acc(void*)
             {
                 Default_Acc = 0.03;
             }
-            if (LEFT_ROTATE != 48)
-            {
-                Pid_Yaw = Pid_Yaw + 0.036;
-                Inital_Yaw[1] = Angle[2];
-            }
-            if (RIGHT_ROTATE != 48)
-            {
-                Pid_Yaw = Pid_Yaw - 0.036;
-                Inital_Yaw[1] = Angle[2];
-            }
             DutyCycle[0] = Default_Acc  - Pid_Roll - Pid_Pitch - Pid_Yaw;
             DutyCycle[1] = Default_Acc  - Pid_Roll + Pid_Pitch + Pid_Yaw;
             DutyCycle[2] = Default_Acc  + Pid_Roll - Pid_Pitch + Pid_Yaw;
@@ -391,10 +381,8 @@ void* serial_DL22(void*)
             _axis[2] =  atoi(axis3);//左右控制 pitch
             STOP1 = Re_buf[13];
             STOP2 = Re_buf[14];
-            LEFT_ROTATE = Re_buf[15];
-            RIGHT_ROTATE = Re_buf[16];
             
-            printf("recv from client: %s %d %d %d %d %d \n\n",ucStr,_axis[0],_axis[1],_axis[2],LEFT_ROTATE,RIGHT_ROTATE);
+            printf("recv from client: %s %d %d %d %d %d \n\n",ucStr,_axis[0],_axis[1],_axis[2],STOP1,STOP2);
             memset(Re_buf, 0, 18*sizeof(char));
             }
         }
