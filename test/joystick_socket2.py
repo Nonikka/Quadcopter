@@ -146,7 +146,7 @@ while done==False:
     pygame.display.flip()
 
     # Limit to 20 frames per second
-    clock.tick(15)
+    clock.tick(16)
     
 # Close the window and quit.
 # If you forget this line, the program will 'hang'

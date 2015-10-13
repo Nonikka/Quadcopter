@@ -12,12 +12,8 @@
 #include <wiringPiI2C.h>
 #include <stdint.h>
 #include <sys/types.h>
-#include <sys/ioctl.h>
-#include <sys/stat.h>
-#include <fcntl.h>
+#include <sys/socket.h>
 #include <netinet/in.h>
-#include <linux/i2c-dev.h>
-#include <math.h>
 #include "I2Cdev.h"
 #include "MPU6050_6Axis_MotionApps20.h"
 #include "pca9685.h"
@@ -57,8 +53,6 @@ uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\
 float Default_Acc = 0.03,Pid_Pitch=0,Pid_Roll=0,Pid_Yaw=0,Accelerator,Roll,Pitch,Yaw,pid_in,pid_error,Roll_PError,Pitch_PError,Yaw_PError,pregyro,Acceleration[3],AngleSpeed[3],Angle[3],DutyCycle[4],Inital_Yaw[7],Inital_Roll[7],Inital_Pitch[7],Filter_Roll[10],Filter_Pitch[10];
 int All_Count=0,START_FLAG=0,Inital=0,PID_ENABLE=0,_axis[6],filter_count,STOP1 = 0,STOP2 = 0,LEFT_ROTATE,RIGHT_ROTATE;//遥控器传来的轴
 unsigned int TimeNow,TimeStart,TimeLastGet;
-const int HMC5883L_I2C_ADDR = 0x1E;
-
 void PWMOut(int pin, float pwm);
 
 MPU6050 mpu;
@@ -81,73 +75,6 @@ struct PID
 PID Roll_Suit;
 PID Pitch_Suit;
 PID Yaw_Suit;
-
-
-void selectDevice(int fd, int addr, char * name)
-{
-    if (ioctl(fd, I2C_SLAVE, addr) < 0)
-    {
-        fprintf(stderr, "%s not present\n", name);
-        //exit(1);
-    }
-}
-
-void writeToDevice(int fd, int reg, int val)
-{
-    char buf[2];
-    buf[0]=reg;
-    buf[1]=val;
-
-    if (write(fd, buf, 2) != 2)
-    {
-        fprintf(stderr, "Can't write to ADXL345\n");
-        //exit(1);
-    }
-}
-
-void* hmc5883l(void*)
-{
-    int fd;
-    unsigned char buf[16];
-
-    if ((fd = open("/dev/i2c-1", O_RDWR)) < 0)
-    {
-        fprintf(stderr, "Failed to open i2c bus\n");
-
-        return 0;
-    }
-
-    selectDevice(fd, HMC5883L_I2C_ADDR, "HMC5883L");
-
-    writeToDevice(fd, 0x01, 32);
-    writeToDevice(fd, 0x02, 0);
-        
-    for (int i = 0; i < 10000; ++i) {   
-        buf[0] = 0x03;
-
-        if ((write(fd, buf, 1)) != 1)
-        {
-            fprintf(stderr, "Error writing to i2c slave\n");
-        }
-
-        if (read(fd, buf, 6) != 6) {
-            fprintf(stderr, "Unable to read from HMC5883L\n");
-        } else {
-            short x = (buf[0] << 8) | buf[1];
-            short y = (buf[4] << 8) | buf[5];
-            short z = (buf[2] << 8) | buf[3];
-           
-            float angle = atan2(y, x) * 180 / 3.14;
-            Angle[2] = angle;
-            
-            printf("x=%d, y=%d, z=%d\n", x, y, z);
-            printf("angle = %0.1f\n\n", angle);
-            
-        }
-        
-        usleep(50 * 1000);
-    }
-}
 
 void Pid_Inital()
 {
@@ -293,7 +220,7 @@ void* gyro_acc(void*)
             mpu.dmpGetQuaternion(&q, fifoBuffer);
             mpu.dmpGetGravity(&gravity, &q);
             mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-            //Angle[2] = ypr[0] * 180/M_PI;
+            Angle[2] = ypr[0] * 180/M_PI;
             Angle[1] = average_filter(ypr[1] * 180/M_PI,Filter_Pitch);//此为Pitch
             Angle[0] = average_filter(ypr[2] * 180/M_PI,Filter_Roll);//此为Roll
             
@@ -452,7 +379,7 @@ void PWMOut(int pin, float pwm)//pwm valaue:0~1
 
 int main()
 {
-    pthread_t mpu6050,joystick,compass;//transport
+    pthread_t mpu6050,joystick;//transport
     int ret;
     Pid_Inital();
     PID_ENABLE = 1;
@@ -473,14 +400,6 @@ int main()
     delay(50);
     mpu.setI2CMasterModeEnabled(false);//不知道这句话要放哪，此处有作用
     mpu.setI2CBypassEnabled(true);
-    
-    ret = pthread_create(&compass,NULL,hmc5883l,NULL);
-    if(ret!=0)
-    {
-        printf ("Create hmc5883l thread error!\n");
-        exit (1);
-    }
-    
     int fd_pca9685 = pca9685Setup(PIN_BASE, 0x40, HERTZ);
 	if (fd_pca9685 < 0)
 	{
