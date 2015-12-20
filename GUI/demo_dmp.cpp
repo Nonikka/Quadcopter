@@ -12,12 +12,8 @@
 #include <wiringPiI2C.h>
 #include <stdint.h>
 #include <sys/types.h>
-#include <sys/ioctl.h>
-#include <sys/stat.h>
-#include <fcntl.h>
+#include <sys/socket.h>
 #include <netinet/in.h>
-#include <linux/i2c-dev.h>
-#include <math.h>
 #include "I2Cdev.h"
 #include "MPU6050_6Axis_MotionApps20.h"
 #include "pca9685.h"
@@ -26,10 +22,6 @@
 #define MAXLINE 4096  
 #define PIN_BASE 300
 #define HERTZ 500
-#define PinNumber1 0  
-#define PinNumber2 1  
-#define PinNumber3 8  //放里面省的被浆卷到
-#define PinNumber4 3  
 #define IMU_UPDATE_DT 0.01
 #define MAX_ACC 0.59
 #define OUTPUT_READABLE_YAWPITCHROLL
@@ -55,9 +47,9 @@ float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gra
 uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' };
 
 float Default_Acc = 0.03,Pid_Pitch=0,Pid_Roll=0,Pid_Yaw=0,Accelerator,Roll,Pitch,Yaw,pid_in,pid_error,Roll_PError,Pitch_PError,Yaw_PError,pregyro,Acceleration[3],AngleSpeed[3],Angle[3],DutyCycle[4],Inital_Yaw[7],Inital_Roll[7],Inital_Pitch[7],Filter_Roll[10],Filter_Pitch[10];
-int All_Count=0,START_FLAG=0,Inital=0,PID_ENABLE=0,_axis[6],filter_count,STOP1 = 0,STOP2 = 0,LEFT_ROTATE,RIGHT_ROTATE;//遥控器传来的轴
+int All_Count=0,START_FLAG=0,Inital=0,PID_ENABLE=0,_axis[6],filter_count,STOP1 = 0,STOP2 = 0,LEFT_ROTATE,RIGHT_ROTATE,serial_fd;//遥控器传来的轴
 unsigned int TimeNow,TimeStart,TimeLastGet;
-const int HMC5883L_I2C_ADDR = 0x1E;
+char send3[13];
 
 void PWMOut(int pin, float pwm);
 
@@ -81,73 +73,6 @@ struct PID
 PID Roll_Suit;
 PID Pitch_Suit;
 PID Yaw_Suit;
-
-
-void selectDevice(int fd, int addr, char * name)
-{
-    if (ioctl(fd, I2C_SLAVE, addr) < 0)
-    {
-        fprintf(stderr, "%s not present\n", name);
-        //exit(1);
-    }
-}
-
-void writeToDevice(int fd, int reg, int val)
-{
-    char buf[2];
-    buf[0]=reg;
-    buf[1]=val;
-
-    if (write(fd, buf, 2) != 2)
-    {
-        fprintf(stderr, "Can't write to ADXL345\n");
-        //exit(1);
-    }
-}
-
-void* hmc5883l(void*)
-{
-    int fd;
-    unsigned char buf[16];
-
-    if ((fd = open("/dev/i2c-1", O_RDWR)) < 0)
-    {
-        fprintf(stderr, "Failed to open i2c bus\n");
-
-        return 0;
-    }
-
-    selectDevice(fd, HMC5883L_I2C_ADDR, "HMC5883L");
-
-    writeToDevice(fd, 0x01, 32);
-    writeToDevice(fd, 0x02, 0);
-        
-    for (int i = 0; i < 10000; ++i) {   
-        buf[0] = 0x03;
-
-        if ((write(fd, buf, 1)) != 1)
-        {
-            fprintf(stderr, "Error writing to i2c slave\n");
-        }
-
-        if (read(fd, buf, 6) != 6) {
-            fprintf(stderr, "Unable to read from HMC5883L\n");
-        } else {
-            short x = (buf[0] << 8) | buf[1];
-            short y = (buf[4] << 8) | buf[5];
-            short z = (buf[2] << 8) | buf[3];
-           
-            float angle = atan2(y, x) * 180 / 3.14;
-            Angle[2] = angle;
-            
-            printf("x=%d, y=%d, z=%d\n", x, y, z);
-            printf("angle = %0.1f\n\n", angle);
-            
-        }
-        
-        usleep(50 * 1000);
-    }
-}
 
 void Pid_Inital()
 {
@@ -238,6 +163,10 @@ float average_filter(float filter_input ,float (&Filter)[10])
     return filter_output;
 }
 
+/*****************
+*mpu6050启动后开始pid
+*得出四个油门数
+*****************/
 void* gyro_acc(void*)
 {
     printf("Initializing I2C devices...\n");
@@ -293,7 +222,7 @@ void* gyro_acc(void*)
             mpu.dmpGetQuaternion(&q, fifoBuffer);
             mpu.dmpGetGravity(&gravity, &q);
             mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-            //Angle[2] = ypr[0] * 180/M_PI;
+            Angle[2] = ypr[0] * 180/M_PI;
             Angle[1] = average_filter(ypr[1] * 180/M_PI,Filter_Pitch);//此为Pitch
             Angle[0] = average_filter(ypr[2] * 180/M_PI,Filter_Roll);//此为Roll
             
@@ -351,25 +280,22 @@ void* gyro_acc(void*)
             DutyCycle[1] = Default_Acc  - Pid_Roll + Pid_Pitch + Pid_Yaw;
             DutyCycle[2] = Default_Acc  + Pid_Roll - Pid_Pitch + Pid_Yaw;
             DutyCycle[3] = Default_Acc  + Pid_Roll + Pid_Pitch - Pid_Yaw;
-        
-            PWMOut(PinNumber1,DutyCycle[0]);
-            PWMOut(PinNumber2,DutyCycle[1]);
-            PWMOut(PinNumber3,DutyCycle[2]);
-            PWMOut(PinNumber4,DutyCycle[3]);
+            //sprintf(send3, "U%+4f%+4f%+4f  Z%+10f%+10f%+10f",Pid_Roll,Pid_Pitch,Pid_Yaw,Angle[0],Angle[1],Angle[2]);
+            sprintf(send3, "U%+10f%+10f%+10f%+10f%+10f%+10f\n",Pid_Roll,Pid_Pitch,Pid_Yaw,Angle[0],Angle[1],Angle[2]);
             
         }
     }
 }
 
-//1油门 2前后 3左右 4旋转 5预留 6预留 每个三位
+
 void* serial_DL22(void*)
 {
-    int fd,counter=0;
+    int counter=0;
     //int Num_Avail;
     unsigned char Re_buf[19];
     unsigned char ucStr[18];
     char axis1[5],axis2[5],axis3[5],axis4[5];
-    if ((fd = serialOpen ("/dev/ttyAMA0", 115200)) < 0)
+    if ((serial_fd = serialOpen ("/dev/ttyAMA0", 115200)) < 0)
     {
     fprintf (stderr, "Unable to open serial device: %s\n", strerror (errno)) ;
     return 0 ;
@@ -377,7 +303,7 @@ void* serial_DL22(void*)
 
     for (;;)
     {
-        Re_buf[counter]=serialGetchar(fd);
+        Re_buf[counter]=serialGetchar(serial_fd);
         if(Re_buf[0]!=0x55) // 0x55 = U
         {
             memset(Re_buf, 0, 18*sizeof(char));
@@ -387,14 +313,28 @@ void* serial_DL22(void*)
         else
         {
             counter++;
-            if(counter==18)             //接收到11个数据
+            if(counter==18)             //接收到18个数据
             {    
             counter=0;               //重新赋值，准备下一帧数据的接收        
             TimeLastGet = millis();
-            for(int a = 0;a<18;a++)
-            {
-                ucStr[a]=Re_buf[a+1];//注意在接受中显示只有前17位，最后一位估计是作为了\0
-            }
+            ucStr[0]=Re_buf[1];
+            ucStr[1]=Re_buf[2];
+            ucStr[2]=Re_buf[3];
+            ucStr[3]=Re_buf[4];
+            ucStr[4]=Re_buf[5];
+            ucStr[5]=Re_buf[6];
+            ucStr[6]=Re_buf[7];
+            ucStr[7]=Re_buf[8];
+            ucStr[8]=Re_buf[9];
+            ucStr[9]=Re_buf[10];
+            ucStr[10]=Re_buf[11];
+            ucStr[11]=Re_buf[12];
+            ucStr[12]=Re_buf[13];
+            ucStr[13]=Re_buf[14];
+            ucStr[14]=Re_buf[15];
+            ucStr[15]=Re_buf[16];
+            ucStr[16]=Re_buf[17];
+            ucStr[17]=Re_buf[18]; //注意在接受中显示只有前17位，最后一位估计是作为了\0
             
             axis1[0] = Re_buf[1];
             axis1[1] = Re_buf[2];
@@ -429,16 +369,10 @@ void* serial_DL22(void*)
 }
 
 
-void PWMOut(int pin, float pwm)//pwm valaue:0~1
-{
-    int outpwm = pwm * 2048 + 2048;
-    //softPwmWrite(pin, (int)outpwm);
-    pwmWrite(PIN_BASE + pin,outpwm);
-}
 
 int main()
 {
-    pthread_t mpu6050,joystick,compass;//transport
+    pthread_t mpu6050,joystick;//transport
     int ret;
     Pid_Inital();
     PID_ENABLE = 1;
@@ -449,6 +383,15 @@ int main()
     }
     
     delay(100);
+    ret = pthread_create(&joystick,NULL,serial_DL22,NULL);//启动serial线程
+    if(ret!=0)
+    {
+        printf ("Create joystick thread error!\n");
+        exit (1);
+    }
+    else{
+        printf ("connect serial OK\n");
+    }
     
     ret = pthread_create(&mpu6050,NULL,gyro_acc,NULL);
     if(ret!=0)
@@ -459,77 +402,38 @@ int main()
     delay(50);
     mpu.setI2CMasterModeEnabled(false);//不知道这句话要放哪，此处有作用
     mpu.setI2CBypassEnabled(true);
-    
-    ret = pthread_create(&compass,NULL,hmc5883l,NULL);
-    if(ret!=0)
-    {
-        printf ("Create hmc5883l thread error!\n");
-        exit (1);
-    }
-    
     int fd_pca9685 = pca9685Setup(PIN_BASE, 0x40, HERTZ);
-    if (fd_pca9685 < 0)
-    {
-        printf("Error in setup pca9685\n");
-        return 0;
-    }
+	if (fd_pca9685 < 0)
+	{
+		printf("Error in setup pca9685\n");
+		return 0;
+	}
     pca9685PWMReset(fd_pca9685);
     
-    /***********
-    //启动方法1：最高油门确认
-    PWMOut(PinNumber1,0.99);
-    PWMOut(PinNumber2,0.99);
-    PWMOut(PinNumber3,0.99);
-    PWMOut(PinNumber4,0.99);
-    printf("Way1:input to start ");
-    getchar();
-    PWMOut(PinNumber1,0.02);
-    PWMOut(PinNumber2,0.02);
-    PWMOut(PinNumber3,0.02);
-    PWMOut(PinNumber4,0.02);
-    delay(1200);
-    PWMOut(PinNumber1,0.05);
-    PWMOut(PinNumber2,0.05);
-    PWMOut(PinNumber3,0.05);
-    PWMOut(PinNumber4,0.05);
-    printf("start!");
-    fflush(stdout);
-    ***************/
     
     //启动方法2：最低油门拉起
     
-    printf("Way 2:PWM in 0 \n");
-    PWMOut(PinNumber1,0);
-    PWMOut(PinNumber2,0);
-    PWMOut(PinNumber3,0);
-    PWMOut(PinNumber4,0);
-    printf("input to start!\n");
-    fflush(stdout);
+    printf("Start!");
+    
     delay(1000);
-    //getchar();
     
     START_FLAG = 1;
-    PWMOut(PinNumber1,0.06);
-    PWMOut(PinNumber2,0.06);
-    PWMOut(PinNumber3,0.06);
-    PWMOut(PinNumber4,0.06);
     delay(500);
     TimeStart = millis();
     
-    ret = pthread_create(&joystick,NULL,serial_DL22,NULL);//启动serial手柄线程
-    if(ret!=0)
-    {
-        printf ("Create joystick thread error!\n");
-        exit (1);
-    }
+    
     delay(4200);
     Inital_Yaw[1] = Angle[2];
     while(1)  
     {  
         system("clear");
-        printf("Pid_Roll:%.4f Pid_Yaw:%.4f pid_error:%.3f  pregyro %.3f All_Count: %d",Pid_Roll,Pid_Yaw,pid_error,pregyro,All_Count);
-        printf("A:%.2f %.2f %.2f\n",Angle[0],Angle[1],Angle[2]); 
-        printf("Default_Acc:%.3f gyro： roll :%.2f\n",Default_Acc,AngleSpeed[0]); 
+        
+        serialPuts(serial_fd,send3);
+        printf("U%+10f%+10f%+10f%+10f%+10f%+10f\n",Pid_Roll,Pid_Pitch,Pid_Yaw,Angle[0],Angle[1],Angle[2]);
+        delay(25);
+        //printf("Pid_Roll:%.4f Pid_Yaw:%.4f pid_error:%.3f  pregyro %.3f All_Count: %d",Pid_Roll,Pid_Yaw,pid_error,pregyro,All_Count);
+        //printf("A:%.2f %.2f %.2f\n",Angle[0],Angle[1],Angle[2]); 
+        //printf("Default_Acc:%.3f gyro： roll :%.2f\n",Default_Acc,AngleSpeed[0]); 
         fflush(stdout);
     }
 }
